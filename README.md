@@ -7,9 +7,4 @@ Contributions are welcome in the form of pull requests. Once the implementation 
 
 ## Code organization
 
-If you want to add a new technique or feature, please add it as a submodule. For example, to add functionality X, arrange it in such a way that a user can do:
-
-    import mne
-    from mne_sandbox import X
-
-to start using the functionality. The submodule may depend on the development version of MNE-Python and other submodules of MNE-sandbox. At least one example script should be placed in the `mne_sandbox/examples` folder.
+The directory structure of this repository mirrors the one of MNE-Python. When you add new functionality, place it in the location where you would expect it to end up in the MNE-Python repository. Your code may depend on the development version of MNE-Python and other submodules of MNE-sandbox. At least one example script should be placed in the `mne_sandbox/examples` folder.
