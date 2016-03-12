@@ -1,22 +1,24 @@
-# ========================
-# EOG regression
-# ========================
-#
-# Reduce EOG artifacts by regressing the EOG channels onto the rest of the
-# signal.
-#
-# References
-# ----------
-# [1] Croft, R. J., & Barry, R. J. (2000). Removal of ocular artifact from
-# the EEG: a review. Clinical Neurophysiology, 30(1), 5-19.
-# http://doi.org/10.1016/S0987-7053(00)00055-1
-#
-# Authors: Marijn van Vliet <w.m.vanvliet@gmail.com>
-#
-# License: BSD (3-clause)
+"""
+========================
+EOG regression
+========================
+
+Reduce EOG artifacts by regressing the EOG channels onto the rest of the
+signal.
+
+References
+----------
+[1] Croft, R. J., & Barry, R. J. (2000). Removal of ocular artifact from
+the EEG: a review. Clinical Neurophysiology, 30(1), 5-19.
+http://doi.org/10.1016/S0987-7053(00)00055-1
+
+Authors: Marijn van Vliet <w.m.vanvliet@gmail.com>
+
+License: BSD (3-clause)
+"""
 
 import mne
-from mne_sandbox import raaa
+from mne_sandbox.preprocessing import eog_regression
 from mne.datasets import sample
 from matplotlib import pyplot as plt
 
@@ -51,7 +53,7 @@ blink_epochs = mne.Epochs(raw, eog_events, eog_event_id, tmin=-0.5, tmax=0.5,
                           picks=picks, baseline=(-0.5, -0.3), preload=True)
 
 # Perform regression and remove EOG
-raw_clean, weights = raaa.eog_regression(raw, blink_epochs)
+raw_clean, weights = eog_regression(raw, blink_epochs)
 
 # Create epochs after EOG correction
 picks = mne.pick_types(raw_clean.info, meg=False, eeg=True)
