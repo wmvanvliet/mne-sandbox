@@ -4,7 +4,7 @@ from mne import pick_types
 
 
 def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
-                   picks=None, copy=False):
+                   eog_channels=None, picks=None, copy=False):
     """Remove EOG signals from the EEG channels by regression.
 
     It employes the RAAA (recommended aligned-artifact average) procedure
@@ -27,6 +27,9 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
         available as well as saccade data, the accuracy of the estimation of
         the weights can be improved. By default, no rEOG channel is assumed to
         be present.
+    eog_channels : str | list of str | None
+        The names of the EOG channels to use. By default, all EOG channels are
+        used.
     picks : list of int | None
         Indices of the channels in the Raw instance for which to apply the EOG
         correction procedure. By default, the correction is applied to EEG
@@ -43,7 +46,19 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
     the EEG: a review. Clinical Neurophysiology, 30(1), 5-19.
     http://doi.org/10.1016/S0987-7053(00)00055-1
     """
+    # Handle defaults for EOG channels parameter
+    if eog_channels is None:
+        eog_picks = pick_types(raw.info, meg=False, ref_meg=False, eog=True)
+        eog_channels = [raw.ch_names[ch] for ch in eog_picks]
+    elif isinstance(eog_channels, str):
+        eog_channels = [eog_channels]
 
+    # Make sure the REOG channel is part of the EOG channel list
+    if reog is not None:
+        if reog not in eog_channels:
+            eog_channels += [reog]
+
+    # Default picks
     if picks is None:
         picks = pick_types(raw.info, meg=False, ref_meg=False, eeg=True)
 
@@ -51,9 +66,8 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
         raw = raw.copy()
 
     # Compute channel indices for the EOG channels
-    raw_eog_ind = pick_types(raw.info, meg=False, ref_meg=False, eog=True)
-    ev_eog_ind = pick_types(blink_epochs.info, meg=False, ref_meg=False,
-                            eog=True)
+    raw_eog_ind = [raw.ch_names.index(ch) for ch in eog_channels]
+    ev_eog_ind = [blink_epochs.ch_names.index(ch) for ch in eog_channels]
 
     blink_evoked = [
         blink_epochs[cl].average(range(blink_epochs.info['nchan']))
@@ -90,11 +104,12 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
             # for the rEOG channel weight.
 
             # Isolate the rEOG channel from the other EOG channels
-            if reog is not None:
-                raw_reog_ind = raw.ch_names.index(reog)
-                raw_non_reog_ind = np.setdiff1d(raw_eog_ind, raw_reog_ind)
-                ev_reog_ind = blink_epochs.ch_names.index(reog)
-                ev_non_reog_ind = np.setdiff1d(ev_eog_ind, ev_reog_ind)
+            raw_reog_ind = raw.ch_names.index(reog)
+            raw_non_reog_ind = list(raw_eog_ind)
+            raw_non_reog_ind.remove(raw_reog_ind)
+            ev_reog_ind = blink_epochs.ch_names.index(reog)
+            ev_non_reog_ind = list(ev_eog_ind)
+            ev_non_reog_ind.remove(ev_reog_ind)
 
             # Compute non-rEOG weights on the saccade data
             v1 = np.vstack((
@@ -113,7 +128,7 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
             )).T
             weights_blink = lstsq(v2, blink_data.T)[0][[1]]
 
-            # Remove non-EOG channels from rEOG channel
+            # Remove saccades from rEOG channel in raw data
             raw._data[raw_reog_ind, :] -= np.dot(
                 weights_sac[:, ev_reog_ind].T, raw._data[raw_non_reog_ind, :])
 
