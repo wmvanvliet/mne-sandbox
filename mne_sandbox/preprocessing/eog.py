@@ -2,6 +2,7 @@ import numpy as np
 from numpy.linalg import lstsq
 from mne import pick_types
 
+
 def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
                    picks=None, copy=False):
     """Remove EOG signals from the EEG channels by regression.
@@ -129,4 +130,3 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
                                   raw._data[raw_eog_ind, :])
 
     return raw, weights[:, weight_ch_ind]
-

@@ -1,1 +1,1 @@
-from eog import eog_regression
+from .eog import eog_regression
