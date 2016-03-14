@@ -1,0 +1,6 @@
+[run]
+branch = True
+source = mne_sandbox
+include = */mne_sandbox/*
+omit =
+    */setup.py
