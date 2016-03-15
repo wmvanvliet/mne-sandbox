@@ -113,7 +113,7 @@ def test_eog_regression():
             tmin=0, tmax=1, preload=True, add_eeg_ref=False
         ),
         reog='REOG',
-        eog_channels=['VEOG', 'HEOG'],
+        eog_channels=['REOG', 'VEOG', 'HEOG'],
         copy=True,
     )
     assert_allclose(cleaned._data[:2], clean._data[:2], atol=1e-3)
