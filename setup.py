@@ -3,7 +3,7 @@ from distutils.core import setup
 
 descr = """Experimental code for MEG and EEG data analysis."""
 
-DISTNAME = 'mne'
+DISTNAME = 'mne-sandbox'
 DESCRIPTION = descr
 MAINTAINER = 'Alexandre Gramfort'
 MAINTAINER_EMAIL = 'alexandre.gramfort@telecom-paristech.fr'
