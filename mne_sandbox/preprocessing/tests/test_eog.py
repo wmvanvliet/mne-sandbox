@@ -113,7 +113,7 @@ def test_eog_regression():
             tmin=0, tmax=1, preload=True, add_eeg_ref=False
         ),
         reog='REOG',
-        eog_channels=['REOG', 'VEOG', 'HEOG'],
+        eog_channels=['VEOG', 'HEOG', 'REOG'],
         copy=True,
     )
     assert_allclose(cleaned._data[:2], clean._data[:2], atol=1e-3)
@@ -150,3 +150,10 @@ def test_eog_regression():
     _, weights = eog_regression(raw, blink_epochs, saccade_epochs, copy=True,
                                 eog_channels='VEOG')
     assert_equal(weights.shape, (1, 2))
+
+    # Order of the EOG channels should not matter
+    cleaned, weights = eog_regression(raw, blink_epochs, saccade_epochs,
+                                      copy=True, reog='REOG',
+                                      eog_channels=['VEOG', 'REOG', 'HEOG'])
+    assert_allclose(cleaned._data[:2], clean._data[:2], atol=1e-3)
+    assert_allclose(weights, [[0, 0], [1.1, 2.1], [1.2, 2.2]], atol=1e-3)

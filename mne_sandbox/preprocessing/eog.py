@@ -57,6 +57,7 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
     if reog is not None:
         if reog not in eog_channels:
             eog_channels += [reog]
+    print eog_channels
 
     # Default picks
     if picks is None:
@@ -132,8 +133,12 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
             raw._data[raw_reog_ind, :] -= np.dot(
                 weights_sac[:, ev_reog_ind].T, raw._data[raw_non_reog_ind, :])
 
-            # Compile the EOG weights
-            weights = np.vstack((weights_sac, weights_blink))
+            # Compile the EOG weights (make sure to put them in the right order)
+            ind = list(range(len(eog_channels)))
+            REOG_ind = eog_channels.index('REOG')
+            del ind[REOG_ind]
+            ind.append(REOG_ind)
+            weights = np.vstack((weights_sac, weights_blink))[ind]
 
     # Create a mapping between the picked channels of the raw instance and the
     # EOG weights
