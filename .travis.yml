@@ -114,7 +114,9 @@ install:
 
 script:
     - nosetests -a '!ultra_slow_test' --with-timer --timer-top-n 30 --verbosity=2 $COVERAGE mne_sandbox
-    - make flake;
+    - if [ "${TEST_LOCATION}" != "install" ]; then
+        make flake;
+      fi;
 
 after_success:
     # Need to run from source dir to exectue "git" commands
