@@ -37,5 +37,6 @@ if __name__ == "__main__":
           platforms='any',
           packages=[
               'mne_sandbox',
+              'mne_sandbox.preprocessing',
           ],
       )
