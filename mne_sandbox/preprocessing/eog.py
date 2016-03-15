@@ -57,7 +57,6 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
     if reog is not None:
         if reog not in eog_channels:
             eog_channels += [reog]
-    print eog_channels
 
     # Default picks
     if picks is None:
