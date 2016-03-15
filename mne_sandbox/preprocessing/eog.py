@@ -132,7 +132,8 @@ def eog_regression(raw, blink_epochs, saccade_epochs=None, reog=None,
             raw._data[raw_reog_ind, :] -= np.dot(
                 weights_sac[:, ev_reog_ind].T, raw._data[raw_non_reog_ind, :])
 
-            # Compile the EOG weights (make sure to put them in the right order)
+            # Compile the EOG weights and make sure to put them in the right
+            # order.
             ind = list(range(len(eog_channels)))
             REOG_ind = eog_channels.index('REOG')
             del ind[REOG_ind]
