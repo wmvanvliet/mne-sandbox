@@ -113,7 +113,7 @@ install:
       fi;
 
 script:
-    - nosetests -a '!ultra_slow_test' --with-timer --timer-top-n 30 --verbosity=2 $COVERAGE
+    - nosetests -a '!ultra_slow_test' --with-timer --timer-top-n 30 --verbosity=2 $COVERAGE mne_sandbox
     - make flake;
 
 after_success:
