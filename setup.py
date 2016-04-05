@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-from distutils.core import setup
+from setuptools import setup
 
 descr = """Experimental code for MEG and EEG data analysis."""
 
