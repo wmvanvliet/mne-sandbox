@@ -3,4 +3,5 @@ branch = True
 source = mne_sandbox
 include = */mne_sandbox/*
 omit =
+    */mne_sandbox/externals/*
     */setup.py

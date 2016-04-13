@@ -1,11 +1,11 @@
 import numpy as np
 from mne.filter import band_pass_filter
 from mne.utils import _time_mask
-from mne.parallel import parallel_func
 from mne.time_frequency import cwt_morlet
 from mne.preprocessing import peak_finder
 from mne.utils import ProgressBar
 from mne.baseline import rescale
+
 
 # Supported PAC functions
 _pac_funcs = ['plv', 'glm', 'mi_tort', 'mi_canolty', 'ozkurt', 'otc']
@@ -191,7 +191,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         The computed phase-amplitude coupling between each pair of data sources
         given in ixs.
     """
-    from pacpy import pac as ppac
+    from ..externals.pacpy import pac as ppac
     if pac_func not in _pac_funcs:
         raise ValueError("PAC function {0} is not supported".format(pac_func))
     func = getattr(ppac, pac_func)
@@ -255,10 +255,10 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
 
 
 def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, filterfn=None,
-                      npad=None, hi_phase=False, scale_amp_func=None,
+                      npad='auto', hi_phase=False, scale_amp_func=None,
                       kws_filt=None):
     """Filter for phase/amp only once for each channel."""
-    from pacpy.pac import _range_sanity
+    from ..externals.pacpy.pac import _range_sanity
     from scipy.signal import hilbert
     filterfn = band_pass_filter if filterfn is None else filterfn
     kws_filt = dict() if kws_filt is None else kws_filt
@@ -270,7 +270,7 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, filterfn=None,
     n_times = data.shape[-1]
     if npad == 'auto':
         next_pow_2 = int(np.ceil(np.log2(n_times)))
-        npad = 2**next_pow_2 - n_times
+        npad = 2 ** next_pow_2 - n_times
     elif not isinstance(npad, int):
         raise ValueError('npad must be "auto" or a positive integer')
 
@@ -291,23 +291,6 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, filterfn=None,
     if scale_amp_func is not None:
         data_am = scale_amp_func(data_am, axis=-1)
     return data_ph, data_am, ix_map_ph, ix_map_am
-
-
-def _filter_ph_am(xph, xam, f_ph, f_am, sfreq, filterfn=None, kws_filt=None):
-    """Aux function for phase/amplitude filtering for one pair of channels"""
-    from pacpy.pac import _range_sanity
-    from scipy.signal import hilbert
-    filterfn = band_pass_filter if filterfn is None else filterfn
-    kws_filt = {} if kws_filt is None else kws_filt
-
-    # Filter the two signals + hilbert/phase
-    _range_sanity(f_ph, f_am)
-    xph = filterfn(xph, sfreq, *f_ph)
-    xam = filterfn(xam, sfreq, *f_am)
-
-    xph = np.angle(hilbert(xph))
-    xam = np.abs(hilbert(xam))
-    return xph, xam
 
 
 def _array_raw_to_epochs(x, sfreq, ev, tmin, tmax):

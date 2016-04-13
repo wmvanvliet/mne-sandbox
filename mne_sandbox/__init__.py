@@ -1,2 +1,3 @@
 from . import preprocessing
-from . import cfc
+from . import connectivity
+from . import externals

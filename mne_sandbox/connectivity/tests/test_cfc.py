@@ -9,11 +9,11 @@ import mne
 from itertools import combinations
 from nose.tools import assert_true, assert_raises, assert_equal
 from numpy.testing import assert_allclose
-from mne_sandbox.cfc import (phase_amplitude_coupling,
-                             phase_locked_amplitude,
-                             phase_binned_amplitude)
+from mne_sandbox.connectivity import (phase_amplitude_coupling,
+                                      phase_locked_amplitude,
+                                      phase_binned_amplitude)
 from sklearn.preprocessing import scale
-from pacpy import pac
+from mne.externals.pacpy import pac
 
 pac_func = 'plv'
 
@@ -61,7 +61,8 @@ def test_phase_amplitude_coupling():
 
     # Test events handling
     conn = phase_amplitude_coupling(rand_raw, flo, fhi, ixs_conn, ev=ev[:, 0],
-                                    tmin=eptmin, tmax=eptmax, pac_func=pac_func)
+                                    tmin=eptmin, tmax=eptmax,
+                                    pac_func=pac_func)
     assert_true(conn.mean() < .2)
     # events ndim > 1
     assert_raises(ValueError, phase_amplitude_coupling, rand_raw, flo, fhi,
@@ -99,7 +100,8 @@ def test_phase_amplitude_coupling():
     # Now noisify the signal and see if this lowers the PAC
     data_raw_noise = data_raw.copy()
     noise_level = 10 * data_raw_noise._data.max()
-    data_raw_noise._data += noise_level * np.random.randn(*data_raw_noise._data.shape)
+    data_raw_noise._data += (noise_level *
+                             np.random.randn(*data_raw_noise._data.shape))
     conn = phase_amplitude_coupling(
         data_raw_noise, flo, fhi, [0, 1], pac_func=pac_func)
     assert_true(conn < .2)
@@ -173,8 +175,4 @@ def test_phase_amplitude_viz_funcs():
 
 if __name__ == '__main__':
     test_phase_amplitude_coupling()
-
-
-# for method in ['plv', 'glm', 'ozkurt']:
-#     print(getattr(pac, method)(data[0], data[1], flo, fhi, fs=info['sfreq']))
-#     print(phase_amplitude_coupling(data_raw, flo, fhi, [0, 1], pac_func=method))
+    test_phase_amplitude_viz_funcs()
