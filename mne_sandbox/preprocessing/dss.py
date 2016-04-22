@@ -42,10 +42,11 @@ def dss(data, data_max_components=None, data_thresh=0,
 
     Returns
     -------
-    dss_mat : array of shape (n_channels, n_dss_channels)
-        The denoising matrix.
-    dss_data : array of shape (n_trials, n_dss_channels, n_times)
-        The denoised data. Note that n_dss_channels are orthogonal virtual
+    dss_mat : array of shape (n_dss_components, n_channels)
+        The denoising matrix. Apply to data via ``np.dot(dss_mat, ep)``, where
+        ``ep`` is an epoch of shape (n_channels, n_samples).
+    dss_data : array of shape (n_trials, n_dss_components, n_samples)
+        The denoised data. Note that the DSS components are orthogonal virtual
         channels and may be fewer in number than the number of channels in the
         input Epochs object. Returned only if ``return_data`` is ``True``.
 
@@ -63,6 +64,9 @@ def dss(data, data_max_components=None, data_thresh=0,
         if return_data:
             data = data.get_data()
     elif isinstance(data, np.ndarray):
+        if data.ndim != 3:
+            raise ValueError('Data to denoise must have shape '
+                             '(n_trials, n_channels, n_times).')
         data_cov = np.sum([np.dot(trial, trial.T) for trial in data], axis=0)
         bias_cov = np.cov(data.mean(axis=0))
     else:
@@ -72,7 +76,8 @@ def dss(data, data_max_components=None, data_thresh=0,
                    bias_max_components, bias_thresh)
     if return_data:
         n_trials, n_chans, n_times = data.shape
-        dss_data = np.einsum('ij,hik->hjk', dss_mat, data)
+        # next line equiv. to: np.array([np.dot(dss_mat, ep) for ep in data])
+        dss_data = np.einsum('ij,hjk->hik', dss_mat, data)
         return dss_mat, dss_data
     else:
         return dss_mat
@@ -84,7 +89,7 @@ def _dss(data_cov, bias_cov, data_max_components=None, data_thresh=None,
 
     Acts on covariance matrices; allows specification of arbitrary bias
     functions (as compared to the public ``dss`` function, which forces the
-    bias function to be the evoked response).
+    bias to be the evoked response).
     """
     data_eigval, data_eigvec = _pca(data_cov, data_max_components, data_thresh)
     W = np.sqrt(1 / data_eigval)  # diagonal of whitening matrix
@@ -97,7 +102,7 @@ def _dss(data_cov, bias_cov, data_max_components=None, data_thresh=None,
     dss_mat = (W[np.newaxis, :] * data_eigvec).dot(bias_eigvec)
     # normalize DSS dimensions
     N = np.sqrt(1 / np.diag(dss_mat.T.dot(data_cov).dot(dss_mat)))
-    return N[np.newaxis, :] * dss_mat
+    return (N * dss_mat).T
 
 
 def _pca(cov, max_components=None, thresh=0):
@@ -123,7 +128,7 @@ def _pca(cov, max_components=None, thresh=0):
         2-dimensional array of eigenvectors.
     """
 
-    if thresh > 1 or thresh < 0:
+    if thresh is not None and (thresh > 1 or thresh < 0):
         raise ValueError('Threshold must be between 0 and 1 (or None).')
     eigval, eigvec = np.linalg.eigh(cov)
     eigval = np.abs(eigval)
