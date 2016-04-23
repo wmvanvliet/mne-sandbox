@@ -40,8 +40,6 @@ def test_dss():
     dss_mat = dss(data, data_thresh=1e-3, bias_thresh=1e-3, return_data=False)
     dss_trial1_comp1 = np.dot(dss_mat, data[0])[0]
     dss_trial1_comp1 = dss_trial1_comp1 / np.abs(dss_trial1_comp1).max()
-    try:
-        assert_allclose(dss_trial1_comp1, sine, rtol=0, atol=0.2)
-    except AssertionError:
-        # maybe just 180 degree phase difference
-        assert_allclose(-1 * dss_trial1_comp1, sine, rtol=0, atol=0.2)
+    # handle possible 180 degree phase difference
+    dss_trial1_comp1 *= np.sign(np.dot(dss_trial1_comp1, sine))
+    assert_allclose(dss_trial1_comp1, sine, rtol=0, atol=0.2)
