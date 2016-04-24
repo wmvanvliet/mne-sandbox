@@ -7,7 +7,7 @@
 # License: BSD (3-clause)
 
 import numpy as np
-from mne import Epochs, compute_covariance
+from mne import Epochs, EpochsArray, compute_covariance
 
 
 def dss(data, data_max_components=None, data_thresh=0,
@@ -58,7 +58,7 @@ def dss(data, data_max_components=None, data_thresh=0,
     .. [2] de Cheveigné, Alain, and Simon, Jonathan Z. (2008). Denoising based
     on spatial filtering. Journal of Neuroscience Methods, 171(2): 331-339.
     """
-    if isinstance(data, Epochs):
+    if isinstance(data, (Epochs, EpochsArray)):
         data_cov = compute_covariance(data).data
         bias_cov = np.cov(data.average().data)
         if return_data:
