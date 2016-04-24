@@ -52,7 +52,7 @@ def test_dss():
     samps = np.arange(first_samp, first_samp + n_trials * n_times * 2,
                       n_times * 2)[:, np.newaxis]
     events = np.c_[samps, np.zeros_like(samps), np.ones_like(samps)]
-    ch_names = ['EEG{:03}'.format(n + 1) for n in range(n_channels)]
+    ch_names = ['EEG{0:03}'.format(n + 1) for n in range(n_channels)]
     ch_types = ['eeg'] * n_channels
     info = create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
     epochs = EpochsArray(data, info=info, events=events, event_id={'fake': 1})
