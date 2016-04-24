@@ -100,9 +100,9 @@ install:
     # coveralls coverage work), and one out of the install directory (that
     # ensures we have included all necessary files).
     - if [ "${TEST_LOCATION}" == "install" ]; then
-        ln -s ${SRC_DIR}/setup.cfg ${MNE_SANDBOX_DIR}/../setup.cfg;
-        ln -s ${SRC_DIR}/.coveragerc ${MNE_SANDBOX_DIR}/../.coveragerc;
-        cd ${MNE_SANDBOX_DIR}/../;
+        ln -s ${SRC_DIR}/setup.cfg ${MNE_SANDBOX_DIR}/setup.cfg;
+        ln -s ${SRC_DIR}/.coveragerc ${MNE_SANDBOX_DIR}/.coveragerc;
+        cd ${MNE_SANDBOX_DIR}/;
       else
         cd ${SRC_DIR};
       fi;
