@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def plot_phase_locked_amplitude(epochs, freqs_phase, freqs_amp,
                                 ix_ph, ix_amp, mask_times=None,
                                 normalize=True,
@@ -44,6 +45,10 @@ def plot_phase_locked_amplitude(epochs, freqs_phase, freqs_amp,
     from sklearn.preprocessing import scale
     amp_kwargs = dict() if amp_kwargs is None else amp_kwargs
     ph_kwargs = dict() if ph_kwargs is None else ph_kwargs
+
+    # Handle kwargs defaults
+    if 'cmap' not in amp_kwargs.keys():
+        amp_kwargs['cmap'] = plt.cm.RdBu_r
 
     data_amp, data_phase, times = phase_locked_amplitude(
         epochs, freqs_phase, freqs_amp,
