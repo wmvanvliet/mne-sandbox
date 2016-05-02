@@ -419,11 +419,13 @@ def phase_locked_amplitude(inst, freqs_phase, freqs_amp,
         band_ph[np.newaxis, :], sfreq, phase_peaks, tmin, tmax)
     data_amp, times, msk_window = _array_raw_to_epochs(
         amp, sfreq, phase_peaks, tmin, tmax)
-    data_phase, data_amp = [i.squeeze() for i in data_phase, data_amp]
+    data_phase = data_phase.squeeze()
+    data_amp = data_amp.squeeze()
 
     # Drop any peak events where there was a nan
     keep_rows = np.where(~np.isnan(data_phase).any(-1))[0]
-    data_phase, data_amp = [i[keep_rows, ...] for i in [data_phase, data_amp]]
+    data_phase = data_phase[keep_rows, ...]
+    data_amp = data_amp[keep_rows, ...]
 
     # Average across phase peak events
     data_amp = data_amp.mean(0)
