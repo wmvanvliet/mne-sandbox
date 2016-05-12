@@ -3,3 +3,4 @@ from .cfc import (phase_amplitude_coupling,
                   phase_binned_amplitude)
 from .viz import (plot_phase_locked_amplitude,
                   plot_phase_binned_amplitude)
+from .simulation import simulate_pac_signal
