@@ -66,9 +66,10 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
 
     Returns
     -------
-    pac_out : array, dtype float, shape (n_pairs, [n_events])
-        The computed phase-amplitude coupling between each pair of data sources
-        given in ixs.
+    pac_out : array, list of arrays, dtype float, shape (n_epochs, n_pairs,
+        n_times) The computed phase-amplitude coupling between
+        each pair of data sources given in ixs. If multiple pac metrics are
+        specified, there will be one array per metric in the output list.
 
     References
     ----------
@@ -151,9 +152,10 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
 
     Returns
     -------
-    pac_out : array, list of arrays, dtype float, shape (n_pairs,
-        [n_events, n_times]) The computed phase-amplitude coupling between
-        each pair of data sources given in ixs.
+    pac_out : array, list of arrays, dtype float, shape (n_epochs, n_pairs,
+        n_times) The computed phase-amplitude coupling between
+        each pair of data sources given in ixs. If multiple pac metrics are
+        specified, there will be one array per metric in the output list.
     """
     from ..externals.pacpy import pac as ppac
     from ..externals.pacpy.filt import firf
@@ -189,9 +191,10 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     # Redefine indices to match the new data arrays
     ixs_new = [(ix_map_ph[i], ix_map_am[j]) for i, j in ixs]
     n_ixs_new = len(ixs_new)
-    data_info = mne.create_info([str(i) for i in range(data.shape[0])], sfreq)
-    data_ph = mne.io.RawArray(data_ph, data_info)
-    data_am = mne.io.RawArray(data_am, data_info)
+    data_ph = mne.io.RawArray(data_ph,
+                              mne.create_info(data_ph.shape[0], sfreq))
+    data_am = mne.io.RawArray(data_am,
+                              mne.create_info(data_am.shape[0], sfreq))
     if ev is not None:
         data_ph = _raw_to_epochs_mne(data_ph, ev, tmin, tmax)
         data_am = _raw_to_epochs_mne(data_am, ev, tmin, tmax)
@@ -260,9 +263,8 @@ def _raw_to_epochs_mne(raw, ev, tmin, tmax):
         raise ValueError('events have incorrect number of columns')
     # Convert to Epochs using the event times
     tmin_all = np.min(tmin)
-    tmax_all = np.max(tmax)
+    tmax_all = np.max(tmax) + (1. / raw.info['sfreq'])
     kws_epochs = dict(tmin=tmin_all, tmax=tmax_all, preload=True)
-
     return mne.Epochs(raw, ev, **kws_epochs)
 
 

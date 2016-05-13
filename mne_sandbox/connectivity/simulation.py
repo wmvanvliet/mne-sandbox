@@ -2,7 +2,7 @@ import numpy as np
 
 
 def simulate_pac_signal(time, freq_phase, freq_amp, max_amp_lo=2.,
-                        max_amp_hi=.5, frac_non_pac=.1, amp_noise_lo=None,
+                        max_amp_hi=.5, frac_pac=.1, amp_noise_lo=None,
                         amp_noise_hi=None, mask_pac_times=None):
     """Simulate a signal with phase-amplitude coupling according to [1].
 
@@ -20,8 +20,8 @@ def simulate_pac_signal(time, freq_phase, freq_amp, max_amp_lo=2.,
         The maximum amplitude for the low-frequency phase signal
     max_amp_hi : float
         The maximum amplitude for the high-frequency amplitude signal
-    frac_non_pac : float, between (0, 1)
-        The fraction of the high-frequency amplitude that is NOT modulated by
+    frac_pac : float, between (0, 1)
+        The fraction of the high-frequency amplitude that is modulated by
         low-frequency phase
     amp_noise_lo : float | None
         The amplitude of noise added to the low-frequency signal.
@@ -29,7 +29,7 @@ def simulate_pac_signal(time, freq_phase, freq_amp, max_amp_lo=2.,
         The amplitude of noise added to the high-frequency signal.
     mask_pac_times : array, dtype bool, shape (n_times,) | None
         Whether to mask specific times to induce PAC. Values where
-        `mask_pac_times` is False will have `frac_non_pac` set to 1.
+        `mask_pac_times` is False will have `frac_pac` set to 0.
         If None, all times have PAC.
 
     Returns
@@ -61,6 +61,7 @@ def simulate_pac_signal(time, freq_phase, freq_amp, max_amp_lo=2.,
     phase_signal = phase_signal + noise[0]
 
     # High-freq amp
+    frac_non_pac = 1. - frac_pac
     frac_non_pac = np.where(mask_pac_times, frac_non_pac, 1)
     amp_signal = (1 - frac_non_pac) * np.sin(2 * np.pi * freq_phase * time)
     amp_signal += 1 + frac_non_pac
