@@ -1,6 +1,6 @@
 """
 ==============================================================
-Compute cross-frequency coupling measures between signals
+Visualize phase-amplitude coupling measures between signals
 ==============================================================
 Computes the normalized amplitude traces for a cross frequency coupled
 signal across a given range of frequencies and displays it along with
