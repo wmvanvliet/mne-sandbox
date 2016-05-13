@@ -79,14 +79,14 @@ raw_artificial._data[ix_amp] += raw_band._data[ix_amp]
 for i_data in [raw, raw_artificial]:
     pac = phase_amplitude_coupling(
         i_data, f_range_phase, f_range_amp, ixs, pac_func='glm',
-        ev=ev_ixs, tmin=-.1, tmax=.5)
+        events=ev_ixs, tmin=0, tmax=.5)
     pac = pac.mean()  # Average across events
 
     # We can also visualize these relationships
     # Create epochs for left-visual condition
     event_id, tmin, tmax = 3, -1, 4
     epochs = mne.Epochs(i_data, events, event_id, tmin, tmax,
-                        baseline=(None, 0),
+                        baseline=(None, 0.),
                         reject=dict(grad=4000e-13, eog=150e-6), preload=True)
     ph_range = np.linspace(*f_range_phase, num=6)
     amp_range = np.linspace(*f_range_amp, num=20)

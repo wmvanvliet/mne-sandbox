@@ -1,9 +1,7 @@
 import numpy as np
-from mne.filter import band_pass_filter
-from mne.utils import _time_mask
 from mne.time_frequency import cwt_morlet
 from mne.preprocessing import peak_finder
-from mne.utils import ProgressBar
+from mne.utils import ProgressBar, logger
 import mne
 import warnings
 
@@ -15,7 +13,7 @@ _hi_phase_funcs = ['plv']
 
 
 def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
-                             ev=None, tmin=None, tmax=None, n_cycles=None,
+                             events=None, tmin=None, tmax=None, n_cycles=3,
                              scale_amp_func=None,  return_data=False,
                              concat_epochs=False, n_jobs=1, verbose=None):
     """ Compute phase-amplitude coupling between pairs of signals using pacpy.
@@ -23,7 +21,7 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
     Parameters
     ----------
     inst : an instance of Raw or Epochs
-        The data used to calculate PAC
+        The data used to calculate PAC.
     f_phase : array, dtype float, shape (2,)
         The frequency range to use for low-frequency phase carrier.
     f_amp : array, dtype float, shape (2,)
@@ -31,58 +29,71 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
     ixs : array-like, shape (n_pairs x 2)
         The indices for low/high frequency channels. PAC will be estimated
         between n_pairs of channels. Indices correspond to rows of `data`.
-    pac_func : string, list of strings
-        The function for estimating PAC. Corresponds to functions in pacpy.pac.
-        Must be one of ['plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'].
-    ev : array, shape (n_events, 3) | array, shape (n_events,) | None
+    pac_func : {'plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'} |
+               list of strings
+        The function for estimating PAC. Corresponds to functions in
+        `pacpy.pac`. Defaults to 'ozkurt'.
+    events : array, shape (n_events, 3) | array, shape (n_events,) | None
         MNE events array. To be supplied if data is 2D and output should be
-        split by events. In this case, tmin and tmax must be provided. If
-        ndim == 1, it is assumed to be event indices, and all events will be
+        split by events. In this case, `tmin` and `tmax` must be provided. If
+        `ndim == 1`, it is assumed to be event indices, and all events will be
         grouped together.
     tmin : float | list of floats, shape (n_pac_windows,) | None
-        If ev is not provided, it is the start time to use in inst. If ev
-        is provided, it is the time (in seconds) to include before each
-        event index. If a list of floats is given, then PAC is calculated
-        for each pair of tmin and tmax.
+        If `events` is not provided, it is the start time to use in `inst`.
+        If `events` is provided, it is the time (in seconds) to include before
+        each event index. If a list of floats is given, then PAC is calculated
+        for each pair of `tmin` and `tmax`. Defaults to `min(inst.times)`.
     tmax : float | list of floats, shape (n_pac_windows,) | None
-        If ev is not provided, it is the stop time to use in inst. If ev
-        is provided, it is the time (in seconds) to include after each
-        event index. If a list of floats is given, then PAC is calculated
-        for each pair of tmin and tmax.
+        If `events` is not provided, it is the stop time to use in `inst`.
+        If `events` is provided, it is the time (in seconds) to include after
+        each event index. If a list of floats is given, then PAC is calculated
+        for each pair of `tmin` and `tmax`. Defaults to `max(inst.n_times)`.
+    n_cycles : int | None
+        The number of cycles to be included in the window for each band-pass
+        filter. Defaults to 3.
     scale_amp_func : None | function
         If not None, will be called on each amplitude signal in order to scale
         the values. Function must accept an N-D input and will operate on the
-        last dimension. E.g., skl.preprocessing.scale
+        last dimension. E.g., `sklearn.preprocessing.scale`.
+        Defaults to no scaling.
     return_data : bool
-        If True, return the phase and amplitude data along with the PAC values.
+        If False, output will be `[pac_out]`. If True, output will be,
+        `[pac_out, low_freq_phase, hi_freq_amplitude]`.
     concat_epochs : bool
         If True, epochs will be concatenated before calculating PAC values. If
         epochs are relatively short, this is a good idea in order to improve
         stability of the PAC metric.
     n_jobs : int
-        Number of CPUs to use in the computation.
+        Number of jobs to run in parallel. Defaults to 1.
     verbose : bool, str, int, or None
-        If not None, override default verbose level (see mne.verbose).
+        If not None, override default verbose level (see `mne.verbose`).
 
     Returns
     -------
     pac_out : array, list of arrays, dtype float, shape (n_epochs, n_pairs,
-        n_times) The computed phase-amplitude coupling between
+              n_times)
+        The computed phase-amplitude coupling between
         each pair of data sources given in ixs. If multiple pac metrics are
         specified, there will be one array per metric in the output list.
+    [phase_signal] : array, shape (n_phase_signals, n_times,)
+        Only returned if `return_data` is True. The phase timeseries of the
+        phase signals (first column of `ixs`).
+    [amp_signal] : array, shape (n_amp_signals, n_times,)
+        Only returned if `return_data` is True. The amplitude timeseries of the
+        amplitude signals (second column of `ixs`).
 
     References
     ----------
-    [1] This function uses the PacPy modulte developed by the Voytek lab.
+    [1] This function uses the PacPy module developed by the Voytek lab.
         https://github.com/voytekresearch/pacpy
     """
     from mne.io.base import _BaseRaw
     if not isinstance(inst, _BaseRaw):
-        raise ValueError('Must supply either Epochs or Raw')
+        raise ValueError('Must supply Raw as input')
     sfreq = inst.info['sfreq']
-    data = inst[:, :][0]
+    data = inst[:][0]
     pac = _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
-                                    pac_func=pac_func, ev=ev,
+                                    pac_func=pac_func, events=events,
                                     tmin=tmin, tmax=tmax, n_cycles=n_cycles,
                                     scale_amp_func=scale_amp_func,
                                     return_data=return_data,
@@ -97,8 +108,8 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
 
 
 def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
-                              pac_func='plv', ev=None, ev_grouping=None,
-                              tmin=None, tmax=None, n_cycles=None,
+                              pac_func='ozkurt', events=None,
+                              tmin=None, tmax=None, n_cycles=3,
                               scale_amp_func=None, return_data=False,
                               concat_epochs=False, n_jobs=1,
                               verbose=None):
@@ -109,7 +120,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     data : array, shape ([n_epochs], n_channels, n_times)
         The data used to calculate PAC
     sfreq : float
-        The sampling frequency of the data
+        The sampling frequency of the data.
     f_phase : array, dtype float, shape (2,)
         The frequency range to use for low-frequency phase carrier.
     f_amp : array, dtype float, shape (2,)
@@ -117,48 +128,60 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     ixs : array-like, shape (n_pairs x 2)
         The indices for low/high frequency channels. PAC will be estimated
         between n_pairs of channels. Indices correspond to rows of `data`.
-    pac_func : string, list of strings
-        The function for estimating PAC. Corresponds to functions in pacpy.pac.
-        Must be one of ['plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'].
-    ev : array, shape (n_events, 3) | array, shape (n_events,) | None
+    pac_func : {'plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'} |
+               list of strings
+        The function for estimating PAC. Corresponds to functions in
+        `pacpy.pac`. Defaults to 'ozkurt'.
+    events : array, shape (n_events, 3) | array, shape (n_events,) | None
         MNE events array. To be supplied if data is 2D and output should be
-        split by events. In this case, tmin and tmax must be provided. If
-        ndim == 1, it is assumed to be event indices, and all events will be
+        split by events. In this case, `tmin` and `tmax` must be provided. If
+        `ndim == 1`, it is assumed to be event indices, and all events will be
         grouped together.
     tmin : float | list of floats, shape (n_pac_windows,) | None
-        If ev is not provided, it is the start time to use in inst. If ev
-        is provided, it is the time (in seconds) to include before each
-        event index. If a list of floats is given, then PAC is calculated
-        for each pair of tmin and tmax.
+        If `events` is not provided, it is the start time to use in `inst`.
+        If `events` is provided, it is the time (in seconds) to include before
+        each event index. If a list of floats is given, then PAC is calculated
+        for each pair of `tmin` and `tmax`. Defaults to `min(inst.times)`.
     tmax : float | list of floats, shape (n_pac_windows,) | None
-        If ev is not provided, it is the stop time to use in inst. If ev
-        is provided, it is the time (in seconds) to include after each
-        event index. If a list of floats is given, then PAC is calculated
-        for each pair of tmin and tmax.
+        If `events` is not provided, it is the stop time to use in `inst`.
+        If `events` is provided, it is the time (in seconds) to include after
+        each event index. If a list of floats is given, then PAC is calculated
+        for each pair of `tmin` and `tmax`. Defaults to `max(inst.n_times)`.
+    n_cycles : int | None
+        The number of cycles to be included in the window for each band-pass
+        filter. Defaults to 3.
     scale_amp_func : None | function
         If not None, will be called on each amplitude signal in order to scale
         the values. Function must accept an N-D input and will operate on the
-        last dimension. E.g., skl.preprocessing.scale
+        last dimension. E.g., `sklearn.preprocessing.scale`.
+        Defaults to no scaling.
     return_data : bool
-        If True, return the phase and amplitude data along with the PAC values.
+        If False, output will be `[pac_out]`. If True, output will be,
+        `[pac_out, low_freq_phase, hi_freq_amplitude]`.
     concat_epochs : bool
         If True, epochs will be concatenated before calculating PAC values. If
         epochs are relatively short, this is a good idea in order to improve
         stability of the PAC metric.
     n_jobs : int
-        Number of CPUs to use in the computation.
+        Number of jobs to run in parallel. Defaults to 1.
     verbose : bool, str, int, or None
-        If not None, override default verbose level (see mne.verbose).
+        If not None, override default verbose level (see `mne.verbose`).
 
     Returns
     -------
     pac_out : array, list of arrays, dtype float, shape (n_epochs, n_pairs,
-        n_times) The computed phase-amplitude coupling between
+              n_times)
+        The computed phase-amplitude coupling between
         each pair of data sources given in ixs. If multiple pac metrics are
         specified, there will be one array per metric in the output list.
+    [phase_signal] : array, shape (n_phase_signals, n_times,)
+        Only returned if `return_data` is True. The phase timeseries of the
+        phase signals (first column of `ixs`).
+    [amp_signal] : array, shape (n_amp_signals, n_times,)
+        Only returned if `return_data` is True. The amplitude timeseries of the
+        amplitude signals (second column of `ixs`).
     """
     from ..externals.pacpy import pac as ppac
-    from ..externals.pacpy.filt import firf
     pac_func = np.atleast_1d(pac_func)
     for i_func in pac_func:
         if i_func not in _pac_funcs:
@@ -179,7 +202,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     if len(tmin) != len(tmax):
         raise ValueError('tmin and tmax have differing lengths')
 
-    print('Pre-filtering data and extracting phase/amplitude...')
+    logger.info('Pre-filtering data and extracting phase/amplitude...')
     hi_phase = np.unique([i_func in _hi_phase_funcs for i_func in pac_func])
     if len(hi_phase) != 1:
         raise ValueError("Can't mix pac funcs that use both hi-freq phase/amp")
@@ -195,9 +218,9 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
                               mne.create_info(data_ph.shape[0], sfreq))
     data_am = mne.io.RawArray(data_am,
                               mne.create_info(data_am.shape[0], sfreq))
-    if ev is not None:
-        data_ph = _raw_to_epochs_mne(data_ph, ev, tmin, tmax)
-        data_am = _raw_to_epochs_mne(data_am, ev, tmin, tmax)
+    if events is not None:
+        data_ph = _raw_to_epochs_mne(data_ph, events, tmin, tmax)
+        data_am = _raw_to_epochs_mne(data_am, events, tmin, tmax)
     # So we know how big the PAC output will be
     if isinstance(data_ph, mne.io._BaseRaw):
         n_ep = 1
@@ -252,31 +275,29 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         return pac_all
 
 
-def _raw_to_epochs_mne(raw, ev, tmin, tmax):
+def _raw_to_epochs_mne(raw, events, tmin, tmax):
     """Convert Raw data to Epochs w/ some time checks."""
-    ev = np.atleast_1d(ev)
-    if ev.ndim == 1:
-        ev = np.vstack([ev, np.zeros_like(ev), np.ones_like(ev)]).T
-    if ev.ndim != 2:
+    events = np.atleast_1d(events)
+    if events.ndim == 1:
+        events = np.vstack([events, np.zeros_like(events),
+                            np.ones_like(events)]).T
+    if events.ndim != 2:
         raise ValueError('events have incorrect number of dimensions')
-    if ev.shape[-1] != 3:
+    if events.shape[-1] != 3:
         raise ValueError('events have incorrect number of columns')
     # Convert to Epochs using the event times
     tmin_all = np.min(tmin)
     tmax_all = np.max(tmax) + (1. / raw.info['sfreq'])
-    kws_epochs = dict(tmin=tmin_all, tmax=tmax_all, preload=True)
-    return mne.Epochs(raw, ev, **kws_epochs)
+    return mne.Epochs(raw, events, tmin=tmin_all, tmax=tmax_all, preload=True)
 
 
-def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=None,
+def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
                       hi_phase=False, scale_amp_func=None, kws_filt=None):
     """Filter for phase/amp only once for each channel."""
     from ..externals.pacpy.pac import _range_sanity
-    from mne.filter import band_pass_filter
     from scipy.signal import hilbert
 
     kws_filt = dict() if kws_filt is None else kws_filt
-    n_cycles = 3 if n_cycles is None else n_cycles
     _range_sanity(f_ph, f_am)
     ix_ph = np.atleast_1d(np.unique(ixs[:, 0]))
     ix_am = np.atleast_1d(np.unique(ixs[:, 1]))
@@ -285,24 +306,27 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=None,
     # Filter for lo-freq phase
     data_ph = data[ix_ph, :]
     for ii in range(data_ph.shape[0]):
-        data_ph[ii] = _band_pass_pac(data_ph[ii], f_ph, sfreq, w=n_cycles)
-    N = 2 ** np.ceil(np.log2(data_ph.shape[-1]))
-    data_ph = np.angle(hilbert(data_ph, N=N)[..., :n_times])
+        data_ph[ii] = _band_pass_pac(data_ph[ii], f_ph, sfreq,
+                                     n_cycles=n_cycles)
+    N_hil = 2 ** np.ceil(np.log2(data_ph.shape[-1]))
+    data_ph = np.angle(hilbert(data_ph, N=N_hil)[..., :n_times])
     ix_map_ph = {ix: i for i, ix in enumerate(ix_ph)}
 
     # Filter for hi-freq amplitude
     data_am = data[ix_am, :]
     for ii in range(data_am.shape[0]):
-        data_am[ii] = _band_pass_pac(data_am[ii], f_am, sfreq, w=n_cycles)
-    N = 2 ** np.ceil(np.log2(data_am.shape[-1]))
-    data_am = np.abs(hilbert(data_am, N=N)[..., :n_times])
+        data_am[ii] = _band_pass_pac(data_am[ii], f_am, sfreq,
+                                     n_cycles=n_cycles)
+    N_hil = 2 ** np.ceil(np.log2(data_am.shape[-1]))
+    data_am = np.abs(hilbert(data_am, N=N_hil)[..., :n_times])
 
     if hi_phase is True:
         # In case the PAC metric needs high-freq amplitude's phase
         for ii in range(data_am.shape[0]):
-            data_am[ii] = _band_pass_pac(data_am[ii], f_ph, sfreq, w=n_cycles)
-        N = 2 ** np.ceil(np.log2(data_ph.shape[-1]))
-        data_am = np.angle(hilbert(data_am, N=N)[..., :n_times])
+            data_am[ii] = _band_pass_pac(data_am[ii], f_ph, sfreq,
+                                         n_cycles=n_cycles)
+        N_hil = 2 ** np.ceil(np.log2(data_ph.shape[-1]))
+        data_am = np.angle(hilbert(data_am, N=N_hil)[..., :n_times])
     ix_map_am = {ix: i for i, ix in enumerate(ix_am)}
 
     if scale_amp_func is not None:
@@ -310,26 +334,27 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=None,
     return data_ph, data_am, ix_map_ph, ix_map_am
 
 
-def _raw_to_epochs_array(x, sfreq, ev, tmin, tmax):
+def _raw_to_epochs_array(x, sfreq, events, tmin, tmax):
     """Aux function to create epochs from a 2D array"""
-    if ev.ndim != 1:
-        raise ValueError('ev must be 1D')
-    if ev.dtype != int:
-        raise ValueError('ev must be of dtype int')
+    if events.ndim != 1:
+        raise ValueError('events must be 1D')
+    if events.dtype != int:
+        raise ValueError('events must be of dtype int')
 
     # Check that events won't be cut off
     n_times = x.shape[-1]
     min_ix = 0 - sfreq * tmin
     max_ix = n_times - sfreq * tmax
-    msk_keep = np.logical_and(ev > min_ix, ev < max_ix)
+    msk_keep = np.logical_and(events > min_ix, events < max_ix)
 
     if not all(msk_keep):
-        print('Some events will be cut off!')
-        ev = ev[msk_keep]
+        logger.info('Some event windows extend beyond data limits,'
+                    ' and will be cut off...')
+        events = events[msk_keep]
 
     # Pull events from the raw data
     epochs = []
-    for ix in ev:
+    for ix in events:
         ix_min, ix_max = [ix + int(i_tlim * sfreq)
                           for i_tlim in [tmin, tmax]]
         epochs.append(x[np.newaxis, :, ix_min:ix_max])
@@ -338,36 +363,35 @@ def _raw_to_epochs_array(x, sfreq, ev, tmin, tmax):
     return epochs, times, msk_keep
 
 
-def phase_locked_amplitude(inst, freqs_phase, freqs_amp,
-                           ix_ph, ix_amp, tmin=-.5, tmax=.5,
-                           mask_times=None):
+def phase_locked_amplitude(inst, freqs_phase, freqs_amp, ix_ph, ix_amp,
+                           tmin=-.5, tmax=.5, mask_times=None):
     """Calculate the average amplitude of a signal at a phase of another.
 
     Parameters
     ----------
-    inst : instance of mne.Epochs or mne.io.Raw
-        The data to be used in phase locking computation
+    inst : instance of mne.Epochs | mne.io.Raw
+        The data to be used in phase locking computation.
     freqs_phase : np.array
         The frequencies to use in phase calculation. The phase of each
         frequency will be averaged together.
     freqs_amp : np.array
         The frequencies to use in amplitude calculation.
     ix_ph : int
-        The index of the signal to be used for phase calculation
+        The index of the signal to be used for phase calculation.
     ix_amp : int
-        The index of the signal to be used for amplitude calculation
+        The index of the signal to be used for amplitude calculation.
     tmin : float
-        The time to include before each phase peak
+        The time to include before each phase peak.
     tmax : float
-        The time to include after each phase peak
+        The time to include after each phase peak.
     mask_times : np.array, dtype bool, shape (inst.n_times,)
-        If inst is an instance of Raw, this will only include times contained
-        in mask_times.
+        If `inst` is an instance of Raw, this will only include times contained
+        in `mask_times`. Defaults to using all times.
 
     Returns
     -------
     data_amp : np.array
-        The mean amplitude values for the frequencies specified in freqs_amp,
+        The mean amplitude values for the frequencies specified in `freqs_amp`,
         time-locked to peaks of the low-frequency phase.
     data_phase : np.array
         The mean low-frequency signal, phase-locked to low-frequency phase
@@ -421,30 +445,30 @@ def phase_binned_amplitude(inst, freqs_phase, freqs_amp,
 
     Parameters
     ----------
-    inst : instance of mne.Epochs or mne.io.Raw
-        The data to be used in phase locking computation
-    freqs_phase : np.array
+    inst : instance of mne.Epochs | mne.io.Raw
+        The data to be used in phase locking computation.
+    freqs_phase : np.array, shape (n_freqs_phase,)
         The frequencies to use in phase calculation. The phase of each
         frequency will be averaged together.
-    freqs_amp : np.array
+    freqs_amp : np.array, shape (n_freqs_amp,)
         The frequencies to use in amplitude calculation. The amplitude
         of each frequency will be averaged together.
     ix_ph : int
-        The index of the signal to be used for phase calculation
+        The index of the signal to be used for phase calculation.
     ix_amp : int
-        The index of the signal to be used for amplitude calculation
+        The index of the signal to be used for amplitude calculation.
     n_bins : int
         The number of bins to use when grouping amplitudes. Each bin will
-        have size (2 * np.pi) / n_bins.
+        have size `(2 * np.pi) / n_bins`.
     mask_times : np.array, dtype bool, shape (inst.n_times,)
-        If inst is an instance of Raw, this will only include times contained
-        in mask_times.
+        Remove timepoints where `mask_times` is False.
+        Defaults to using all times.
 
     Returns
     -------
     amp_binned : np.array, shape (n_bins,)
         The mean amplitude of freqs_amp at each phase bin
-    bins_phase : np.array, shape (n_bins+1)
+    bins_phase : np.array, shape (n_bins + 1,)
         The bins used in the calculation. There is one extra bin because
         bins represent the left/right edges of each bin, not the center value.
     """
@@ -457,7 +481,7 @@ def phase_binned_amplitude(inst, freqs_phase, freqs_amp,
     if mask_times is not None:
         # Only keep times we want
         if len(mask_times) != amp.shape[-1]:
-            raise ValueError('mask_times must be == in length to data')
+            raise ValueError('mask_times must be equal in length to data')
         angle_ph, band_ph, amp = [i[..., mask_times]
                                   for i in [angle_ph, band_ph, amp]]
 
@@ -465,7 +489,7 @@ def phase_binned_amplitude(inst, freqs_phase, freqs_amp,
     bins_phase = np.linspace(-np.pi, np.pi, n_bins)
     bins_phase_ixs = np.digitize(angle_ph, bins_phase)
     unique_bins = np.unique(bins_phase_ixs)
-    amp_binned = [np.mean(amp[:, bins_phase_ixs == i], 1)
+    amp_binned = [np.mean(amp[:, bins_phase_ixs == i], axis=1)
                   for i in unique_bins]
     amp_binned = np.vstack(amp_binned).mean(1)
 
@@ -494,7 +518,7 @@ def _extract_phase_and_amp(data_phase, data_amp, sfreq, freqs_phase,
     return angle_ph, band_ph_stacked, amp
 
 
-def _pull_data(inst, ix_ph, ix_amp, ev=None, tmin=None, tmax=None):
+def _pull_data(inst, ix_ph, ix_amp, events=None, tmin=None, tmax=None):
     """Pull data from either Base or Epochs instances"""
     from mne.io.base import _BaseRaw
     from mne.epochs import _BaseEpochs
@@ -507,7 +531,7 @@ def _pull_data(inst, ix_ph, ix_amp, ev=None, tmin=None, tmax=None):
     return data_ph, data_amp
 
 
-def _band_pass_pac(x, f_range, fs=1000, w=3):
+def _band_pass_pac(x, f_range, sfreq=1000, n_cycles=3):
     """
     Band-pass filter a signal using PacPy for PAC coupling.
 
@@ -518,42 +542,42 @@ def _band_pass_pac(x, f_range, fs=1000, w=3):
     *Like fir1 in MATLAB
 
     x : array-like, 1d
-        Time series to filter
+        Time series to filter.
     f_range : (low, high), Hz
-        Cutoff frequencies of bandpass filter
-    fs : float, Hz
-        Sampling rate
-    w : float
-        Length of the filter in terms of the number of cycles 
-        of the oscillation whose frequency is the low cutoff of the 
-        bandpass filter
+        Cutoff frequencies of bandpass filter.
+    sfreq : float, Hz
+        Sampling rate.
+    n_cycles : float
+        Length of the filter in terms of the number of cycles
+        of the oscillation whose frequency is the low cutoff of the
+        bandpass filter.
 
     Returns
     -------
     x_filt : array-like, 1d
-        Filtered time series
+        Filtered time series.
     """
     from ..externals.pacpy.filt import firwin, filtfilt
 
-    if w <= 0:
+    if n_cycles <= 0:
         raise ValueError(
             'Number of cycles in a filter must be a positive number.')
 
-    nyq = np.float(fs / 2)
+    nyq = np.float(sfreq / 2)
     if np.any(np.array(f_range) > nyq):
         raise ValueError('Filter frequencies must be below nyquist rate.')
 
     if np.any(np.array(f_range) < 0):
         raise ValueError('Filter frequencies must be positive.')
 
-    Ntaps = np.floor(w * fs / f_range[0])
-    if len(x) < Ntaps:
+    n_taps = np.floor(n_cycles * sfreq / f_range[0])
+    if len(x) < n_taps:
         raise RuntimeError(
-            'Length of filter is loger than data. '
+            'Length of filter is longer than data. '
             'Provide more data or a shorter filter.')
 
     # Perform filtering
-    taps = firwin(Ntaps, np.array(f_range) / nyq, pass_zero=False)
+    taps = firwin(n_taps, np.array(f_range) / nyq, pass_zero=False)
     x_filt = filtfilt(taps, [1], x)
 
     if any(np.isnan(x_filt)):

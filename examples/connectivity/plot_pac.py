@@ -24,6 +24,7 @@ from mne_sandbox.connectivity import (simulate_pac_signal,
                                       phase_amplitude_coupling)
 
 print(__doc__)
+np.random.seed(1337)
 
 ###############################################################################
 # Phase-amplitude coupling (PAC) is a technique to determine if the
@@ -46,10 +47,10 @@ mag_am = 1
 # These are the times where PAC is active in our simulated signal
 n_secs = 20.
 time = np.arange(0, n_secs, 1. / sfreq)
-event_times = [1, 5, 9, 13, 17]
+event_times = np.arange(1, 18, 4)
 event_dur = 2.
 
-# Create a time maks that defines when PAC is active
+# Create a time mask that defines when PAC is active
 msk_pac_times = np.zeros_like(time).astype(bool)
 for i_time in event_times:
     msk_pac_times += mne.utils._time_mask(time, i_time, i_time + event_dur)
@@ -77,7 +78,7 @@ signal_b = lo_none + hi_pac
 labels = ['Combined Signal', 'Lo-Freq signal', 'Hi-freq signal']
 data = [[signal_a, lo_none, hi_pac],
         [signal_b, lo_pac, hi_none]]
-f, axs = plt.subplots(3, 2, figsize=(10, 5))
+fig, axs = plt.subplots(3, 2, figsize=(10, 5))
 for axcol, i_data in zip(axs.T, data):
     for ax, i_sig, i_label in zip(axcol, i_data, labels):
         ax.plot(time, i_sig)
@@ -105,7 +106,7 @@ pac_times = np.array(
 # Here we specify indices to calculate PAC in both directions
 ixs = np.array([[0, 1],
                 [1, 0]])
-f, axs = plt.subplots(2, 1, figsize=(10, 5))
+fig, axs = plt.subplots(2, 1, figsize=(10, 5))
 all_pac = []
 for pac_funcs in iter_pac_funcs:
     pac = phase_amplitude_coupling(
@@ -139,16 +140,15 @@ pac_times = np.array([(i, i + win_size)
 pac = phase_amplitude_coupling(
     raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ixs,
     pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
-    ev=ev, concat_epochs=False)
+    events=ev, concat_epochs=False)
 
 # This allows us to calculate the stability of PAC across epochs
-f, axs = plt.subplots(1, 2, sharey=True, figsize=(10, 5))
+fig, axs = plt.subplots(1, 2, sharey=True, figsize=(10, 5))
 for ii, (i_pac, i_pac_name, color) in enumerate(zip(pac, pac_funcs, colors)):
-    mn_pac = i_pac.mean(0)
-    ste_pac = i_pac.std(0) / np.sqrt(i_pac.shape[0])
-    for i_pac_mn, i_pac_ste, ax in zip(mn_pac, ste_pac, axs):
-        ax.fill_between(pac_times[:, 0], i_pac_mn - i_pac_ste,
-                        i_pac_mn + i_pac_ste, color=color, label=i_pac_name)
+    for i_pac_mn, ax in zip(i_pac.mean(0), axs):
+        ax.plot(pac_times[:, 0], i_pac_mn, color=color, label=i_pac_name)
+        ax.axvline(0, ls='--', color='k', lw=1)
+
 axs[0].legend()
 axs[0].set_title('Time-locked PAC: Signal A to Signal B')
 axs[1].set_title('Time-locked PAC: Signal B to Signal A')

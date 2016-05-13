@@ -13,7 +13,7 @@ from mne_sandbox.connectivity import (phase_amplitude_coupling,
                                       phase_locked_amplitude,
                                       phase_binned_amplitude)
 from sklearn.preprocessing import scale
-from mne.externals.pacpy import pac
+from mne_sandbox.externals.pacpy import pac
 
 pac_func = 'plv'
 
