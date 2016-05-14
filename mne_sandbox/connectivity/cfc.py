@@ -288,7 +288,8 @@ def _raw_to_epochs_mne(raw, events, tmin, tmax):
     # Convert to Epochs using the event times
     tmin_all = np.min(tmin)
     tmax_all = np.max(tmax) + (1. / raw.info['sfreq'])
-    return mne.Epochs(raw, events, tmin=tmin_all, tmax=tmax_all, preload=True)
+    return mne.Epochs(raw, events, tmin=tmin_all, tmax=tmax_all, preload=True,
+                      baseline=None)
 
 
 def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
@@ -308,16 +309,16 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
     for ii in range(data_ph.shape[0]):
         data_ph[ii] = _band_pass_pac(data_ph[ii], f_ph, sfreq,
                                      n_cycles=n_cycles)
-    N_hil = 2 ** np.ceil(np.log2(data_ph.shape[-1]))
+    N_hil = int(2 ** np.ceil(np.log2(data_ph.shape[-1])))
     data_ph = np.angle(hilbert(data_ph, N=N_hil)[..., :n_times])
-    ix_map_ph = {ix: i for i, ix in enumerate(ix_ph)}
+    ix_map_ph = dict((ix, i) for i, ix in enumerate(ix_ph))
 
     # Filter for hi-freq amplitude
     data_am = data[ix_am, :]
     for ii in range(data_am.shape[0]):
         data_am[ii] = _band_pass_pac(data_am[ii], f_am, sfreq,
                                      n_cycles=n_cycles)
-    N_hil = 2 ** np.ceil(np.log2(data_am.shape[-1]))
+    N_hil = int(2 ** np.ceil(np.log2(data_am.shape[-1])))
     data_am = np.abs(hilbert(data_am, N=N_hil)[..., :n_times])
 
     if hi_phase is True:
@@ -325,9 +326,9 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
         for ii in range(data_am.shape[0]):
             data_am[ii] = _band_pass_pac(data_am[ii], f_ph, sfreq,
                                          n_cycles=n_cycles)
-        N_hil = 2 ** np.ceil(np.log2(data_ph.shape[-1]))
+        N_hil = int(2 ** np.ceil(np.log2(data_ph.shape[-1])))
         data_am = np.angle(hilbert(data_am, N=N_hil)[..., :n_times])
-    ix_map_am = {ix: i for i, ix in enumerate(ix_am)}
+    ix_map_am = dict((ix, i) for i, ix in enumerate(ix_am))
 
     if scale_amp_func is not None:
         data_am = scale_amp_func(data_am, axis=-1)
@@ -523,8 +524,8 @@ def _pull_data(inst, ix_ph, ix_amp, events=None, tmin=None, tmax=None):
     from mne.io.base import _BaseRaw
     from mne.epochs import _BaseEpochs
     if isinstance(inst, _BaseEpochs):
-        data_ph = inst._data[:, ix_ph, :]
-        data_amp = inst._data[:, ix_amp, :]
+        data_ph = inst.get_data()[:, ix_ph, :]
+        data_amp = inst.get_data()[:, ix_amp, :]
     elif isinstance(inst, _BaseRaw):
         data = inst[[ix_ph, ix_amp], :][0].squeeze()
         data_ph, data_amp = [i[np.newaxis, ...] for i in data]

@@ -49,6 +49,10 @@ def simulate_pac_signal(time, freq_phase, freq_amp, max_amp_lo=2.,
            Oscillations of Different Frequencies." Journal of Neurophysiology,
            vol. 104, issue 2, 2010.
     """
+    if frac_pac < 0. or frac_pac > 1.:
+        raise ValueError('frac_pac must be between 0. and 1.')
+    if not all([isinstance(i, (float, int)) for i in [freq_amp, freq_phase]]):
+        raise ValueError('freq_amp and freq_phase must be a single float')
     if mask_pac_times is None:
         mask_pac_times = np.ones_like(time).astype(bool)
 
