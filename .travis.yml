@@ -86,7 +86,8 @@ install:
     # Suppress the parallel outputs for logging cleanliness
     - export MNE_LOGGING_LEVEL=warning
     - python setup.py build
-    - python setup.py install
+    # Use PIP to install, so setuptools does not produce a binary egg
+    - pip install .
     - SRC_DIR=$(pwd)
     - cd ~
     # Trigger download of testing data. Note that
