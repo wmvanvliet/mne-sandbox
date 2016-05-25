@@ -69,27 +69,40 @@ def test_phase_amplitude_coupling():
                   f_band_hi, ixs_pac)
 
     # Testing Raw
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=pac_func)
     assert_true(conn.mean() < min_pac)
-    assert_equal(conn.shape, (1, 1, 1))
+    assert_equal(conn.shape, (1, 1, 1, 1))
 
     # Testing Raw + multiple times
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func,
         tmin=event_times, tmax=event_times + event_dur)
     assert_true(conn.mean() > max_pac)
-    assert_equal(conn.shape, (1, 1, event_times.shape[0]))
+    assert_equal(conn.shape, (1, 1, 1, event_times.shape[0]))
     # Difference in number of tmin / tmax
     assert_raises(ValueError, phase_amplitude_coupling,
                   raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func,
                   tmin=event_times[1:], tmax=event_times + event_dur)
 
+    # Testing Raw + multiple frequency pairs
+    # Increasing n_cycles for better freq resolution
+    f_band_lo_mult = [f_band_lo, (10, 12)]
+    f_band_hi_mult = [f_band_hi, (14, 16)]
+    conn, fbands = phase_amplitude_coupling(
+        raw, f_band_lo_mult, f_band_hi_mult, ixs_pac, pac_func=pac_func,
+        tmin=event_times, tmax=event_times + event_dur, n_cycles=4)
+    # Make sure shapes are right
+    assert_equal(conn.shape[2], 4)
+    assert_equal(len(fbands), 4)
+    assert_true(conn[:, 0, 0, :].mean() > max_pac)  # pac freqs
+    # Loosening the min value for frequency because of freq spillage
+    assert_true(conn[:, 0, 1, :].mean() < .1)  # Non-pac freqs
+
     # Testing Raw + multiple PAC
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=['ozkurt', 'glm'])
-    assert_true(isinstance(conn, list))
-    assert_equal(len(conn), 2)
+    assert_equal(conn.shape[0], 2)
 
     # Mixing hi-freq phase and hi-freq amplitude metrics
     assert_raises(ValueError, phase_amplitude_coupling,
@@ -97,44 +110,44 @@ def test_phase_amplitude_coupling():
                   pac_func=['ozkurt', 'plv'])
 
     # Testing Raw + Epochs
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func, events=events,
         tmin=0, tmax=event_dur)
     assert_true(conn.mean() > max_pac)
-    assert_equal(conn.shape, (events.shape[0], 1, 1))
+    assert_equal(conn.shape, (events.shape[0], 1, 1, 1))
 
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=pac_func,
         events=events, tmin=0, tmax=event_dur)
     assert_true(conn.mean() < min_pac)
 
     # Testing Raw + Epochs + concatenating epochs
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func, events=events,
         tmin=0, tmax=event_dur, concat_epochs=True)
     assert_true(conn.mean() > max_pac)
-    assert_equal(conn.shape, (1, 1, 1))
+    assert_equal(conn.shape, (1, 1, 1, 1))
 
     # Testing Raw + Epochs + multiple times
     # First time window should have PAC, second window doesn't
     # Testing hi end at .3 because ozkurt seems to peak here
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func, events=events,
         tmin=[0, -1], tmax=[event_dur, -.5])
     assert_true(conn[..., 0].mean() > max_pac)
     assert_true(conn[..., 1].mean() < min_pac)
-    assert_equal(conn.shape, (events.shape[0], 1, 2))
+    assert_equal(conn.shape, (events.shape[0], 1, 1, 2))
 
     # Same times but non-pac ixs
-    conn = phase_amplitude_coupling(
+    conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=pac_func,
         events=events, tmin=[0, -1], tmax=[event_dur, -.5])
     assert_true(conn[..., 0].mean() < min_pac)
     assert_true(conn[..., 1].mean() < min_pac)
-    assert_equal(conn.shape, (events.shape[0], 1, 2))
+    assert_equal(conn.shape, (events.shape[0], 1, 1, 2))
 
     # Check return data and scale func
-    conn, data_phase, data_amp = phase_amplitude_coupling(
+    conn, _, data_phase, data_amp = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=pac_func,
         return_data=True, scale_amp_func=scale)
     # Make sure amp has been scaled

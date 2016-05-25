@@ -38,7 +38,7 @@ np.random.seed(1337)
 
 # Define parameters for our simulated signal
 sfreq = 1000.
-f_phase = 4
+f_phase = 5
 f_amp = 40
 frac_pac = .99  # This is the fraction of PAC to use
 mag_ph = 4
@@ -109,12 +109,13 @@ ixs = np.array([[0, 1],
 fig, axs = plt.subplots(2, 1, figsize=(10, 5))
 all_pac = []
 for pac_funcs in iter_pac_funcs:
-    pac = phase_amplitude_coupling(
+    pac, pac_freqs = phase_amplitude_coupling(
         raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ixs,
         pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
         n_cycles=3)
-    if isinstance(pac, np.ndarray):
-        pac = [pac]
+    pac = pac.squeeze()
+    if len(pac_funcs) == 1:
+        pac = pac[np.newaxis, ...]
     for i_pac, i_name in zip(pac, pac_funcs):
         for i_pac_ix, ax in zip(i_pac.squeeze(), axs):
             ax.plot(i_pac_ix.squeeze(), label=i_name)
@@ -137,10 +138,11 @@ ev_tmin = -2.
 ev_tmax = 3.
 pac_times = np.array([(i, i + win_size)
                       for i in np.arange(ev_tmin, ev_tmax, step_size)])
-pac = phase_amplitude_coupling(
+pac, pac_freqs = phase_amplitude_coupling(
     raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ixs,
     pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
     events=ev, concat_epochs=False)
+pac = pac.squeeze()
 
 # This allows us to calculate the stability of PAC across epochs
 fig, axs = plt.subplots(1, 2, sharey=True, figsize=(10, 5))
@@ -153,5 +155,29 @@ axs[0].legend()
 axs[0].set_title('Time-locked PAC: Signal A to Signal B')
 axs[1].set_title('Time-locked PAC: Signal B to Signal A')
 
+plt.tight_layout()
+
+# Finally, we can also calculate PAC with multiple frequencies
+freqs_phase = np.array([(i-.1, i+.1)
+                        for i in np.arange(3, 12, 1)])
+freqs_amp = np.array([(i-.1, i+.1)
+                      for i in np.arange(f_amp-20, f_amp+20, 5)])
+
+pac, pac_freqs = phase_amplitude_coupling(
+    raw, freqs_phase, freqs_amp, ixs,
+    pac_func=['ozkurt'], tmin=.2, tmax=1,
+    events=ev, concat_epochs=True, n_cycles=5)
+pac = pac.squeeze()
+
+f, axs = plt.subplots(1, 2, figsize=(10, 5))
+for ax, i_pac in zip(axs, pac):
+    comod = i_pac.reshape([-1, len(freqs_amp)]).T
+    ax.pcolormesh(freqs_phase[:, 0], freqs_amp[:, 0], comod,
+                  vmin=0, vmax=.4)
+_ = plt.setp(axs, xlim=[freqs_phase[:, 0].min(), freqs_phase[:, 0].max()],
+             ylim=[freqs_amp[:, 0].min(), freqs_amp[:, 0].max()],
+             xlabel='Frequency Phase (Hz)', ylabel='Frequency Amplitude (Hz)')
+axs[0].set_title('Comodulogram: Signal A to Signal B')
+axs[1].set_title('Comodulogram: Signal B to Signal A')
 plt.tight_layout()
 plt.show(block=True)

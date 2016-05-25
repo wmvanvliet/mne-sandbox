@@ -2,6 +2,7 @@ import numpy as np
 from mne.time_frequency import cwt_morlet
 from mne.preprocessing import peak_finder
 from mne.utils import ProgressBar, logger
+from itertools import product
 import mne
 import warnings
 
@@ -22,9 +23,9 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
     ----------
     inst : an instance of Raw or Epochs
         The data used to calculate PAC.
-    f_phase : array, dtype float, shape (2,)
+    f_phase : array, dtype float, shape (n_bands, 2,)
         The frequency range to use for low-frequency phase carrier.
-    f_amp : array, dtype float, shape (2,)
+    f_amp : array, dtype float, shape (n_bands, 2,)
         The frequency range to use for high-frequency amplitude modulation.
     ixs : array-like, shape (n_pairs x 2)
         The indices for low/high frequency channels. PAC will be estimated
@@ -101,10 +102,11 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
                                     n_jobs=n_jobs, verbose=verbose)
     # Collect the data properly
     if return_data is True:
-        pac, data_ph, data_am = pac
-        return pac, data_ph, data_am
+        pac, freq_pac, data_ph, data_am = pac
+        return pac, freq_pac, data_ph, data_am
     else:
-        return pac
+        pac, freq_pac = pac
+        return pac, freq_pac
 
 
 def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
@@ -121,9 +123,9 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         The data used to calculate PAC
     sfreq : float
         The sampling frequency of the data.
-    f_phase : array, dtype float, shape (2,)
+    f_phase : array, dtype float, shape (n_bands, 2,)
         The frequency range to use for low-frequency phase carrier.
-    f_amp : array, dtype float, shape (2,)
+    f_amp : array, dtype float, shape (n_bands, 2,)
         The frequency range to use for high-frequency amplitude modulation.
     ixs : array-like, shape (n_pairs x 2)
         The indices for low/high frequency channels. PAC will be estimated
@@ -186,21 +188,26 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     for i_func in pac_func:
         if i_func not in _pac_funcs:
             raise ValueError("PAC function %s is not supported" % i_func)
+    n_pac_funcs = pac_func.shape[0]
     ixs = np.array(ixs, ndmin=2)
     tmin = 0 if tmin is None else tmin
     tmin = np.atleast_1d(tmin)
     n_times = len(tmin)
     tmax = (data.shape[-1] - 1) / float(sfreq) if tmax is None else tmax
     tmax = np.atleast_1d(tmax)
+    f_phase = np.atleast_2d(f_phase)
+    f_amp = np.atleast_2d(f_amp)
 
     if data.ndim != 2:
         raise ValueError('Data must be shape (n_channels, n_times)')
     if ixs.shape[1] != 2:
         raise ValueError('Indices must have have a 2nd dimension of length 2')
-    if len(f_phase) != 2 or len(f_amp) != 2:
+    if f_phase.shape[-1] != 2 or f_amp.shape[-1] != 2:
         raise ValueError('Frequencies must be specified w/ a low/hi tuple')
     if len(tmin) != len(tmax):
         raise ValueError('tmin and tmax have differing lengths')
+    if any(i_f.shape[0] > 1 and 'plv' in pac_func for i_f in (f_amp, f_phase)):
+        raise ValueError('If calculating PLV, must use a single pair of freqs')
 
     logger.info('Pre-filtering data and extracting phase/amplitude...')
     hi_phase = np.unique([i_func in _hi_phase_funcs for i_func in pac_func])
@@ -211,68 +218,84 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         data, sfreq, ixs, f_phase, f_amp, hi_phase=hi_phase,
         scale_amp_func=scale_amp_func, n_cycles=n_cycles)
 
-    # Redefine indices to match the new data arrays
-    ixs_new = [(ix_map_ph[i], ix_map_am[j]) for i, j in ixs]
-    n_ixs_new = len(ixs_new)
-    data_ph = mne.io.RawArray(data_ph,
-                              mne.create_info(data_ph.shape[0], sfreq))
-    data_am = mne.io.RawArray(data_am,
-                              mne.create_info(data_am.shape[0], sfreq))
-    if events is not None:
-        data_ph = _raw_to_epochs_mne(data_ph, events, tmin, tmax)
-        data_am = _raw_to_epochs_mne(data_am, events, tmin, tmax)
     # So we know how big the PAC output will be
-    if isinstance(data_ph, mne.io._BaseRaw):
+    if events is None:
         n_ep = 1
     elif concat_epochs is True:
-        n_ep = len(data_ph.event_id.keys())
+        if events.ndim == 1:
+            n_ep = 1
+        else:
+            n_ep = np.unique(events[:, -1]).shape[0]
     else:
-        n_ep = data_ph._data.shape[0]
+        n_ep = events.shape[0]
 
-    # Data is either Raw or Epochs
-    pac_all = []
-    for i_pac_func in pac_func:
-        func = getattr(ppac, i_pac_func)
-        pac = np.zeros([n_ep, n_ixs_new, n_times])
+    # Iterate through each pair of frequencies
+    ixs_freqs = product(range(data_ph.shape[1]), range(data_am.shape[1]))
+    ixs_freqs = np.atleast_2d(list(ixs_freqs))
+
+    freq_pac = np.array([[f_phase[ii], f_amp[jj]] for ii, jj in ixs_freqs])
+    n_f_pairs = len(ixs_freqs)
+    pac = np.zeros([n_pac_funcs, n_ep, ixs.shape[0], n_f_pairs, n_times])
+    for i_f_pair, (ix_f_ph, ix_f_am) in enumerate(ixs_freqs):
+        # Second dimension is frequency
+        i_f_data_ph = data_ph[:, ix_f_ph, ...]
+        i_f_data_am = data_am[:, ix_f_am, ...]
+
+        # Redefine indices to match the new data arrays
+        ixs_new = [(ix_map_ph[i], ix_map_am[j]) for i, j in ixs]
+        i_f_data_ph = mne.io.RawArray(
+            i_f_data_ph, mne.create_info(i_f_data_ph.shape[0], sfreq))
+        i_f_data_am = mne.io.RawArray(
+            i_f_data_am, mne.create_info(i_f_data_am.shape[0], sfreq))
+
+        # Turn into Epochs if we have defined events
+        if events is not None:
+            i_f_data_ph = _raw_to_epochs_mne(i_f_data_ph, events, tmin, tmax)
+            i_f_data_am = _raw_to_epochs_mne(i_f_data_am, events, tmin, tmax)
+
+        # Data is either Raw or Epochs
         pbar = ProgressBar(n_ep)
         for itime, (i_tmin, i_tmax) in enumerate(zip(tmin, tmax)):
             # Pull times of interest
             with warnings.catch_warnings():  # To suppress a depracation
                 warnings.simplefilter("ignore")
                 # Not sure how to do this w/o copying
-                i_data_am = data_am.copy().crop(i_tmin, i_tmax)
-                i_data_ph = data_ph.copy().crop(i_tmin, i_tmax)
+                i_t_data_am = i_f_data_am.copy().crop(i_tmin, i_tmax)
+                i_t_data_ph = i_f_data_ph.copy().crop(i_tmin, i_tmax)
 
             if concat_epochs is True:
                 # Iterate through each event type and hstack
-                concat_data_ph = []
-                concat_data_am = []
-                for i_ev in data_am.event_id.keys():
-                    concat_data_ph.append(np.hstack(i_data_ph[i_ev]._data))
-                    concat_data_am.append(np.hstack(i_data_am[i_ev]._data))
-                i_data_am = np.vstack(concat_data_am)
-                i_data_ph = np.vstack(concat_data_ph)
+                con_data_ph = []
+                con_data_am = []
+                for i_ev in i_t_data_am.event_id.keys():
+                    con_data_ph.append(np.hstack(i_t_data_ph[i_ev]._data))
+                    con_data_am.append(np.hstack(i_t_data_am[i_ev]._data))
+                i_t_data_ph = np.vstack(con_data_ph)
+                i_t_data_am = np.vstack(con_data_am)
             else:
                 # Just pull all epochs separately
-                i_data_am = i_data_am._data
-                i_data_ph = i_data_ph._data
+                i_t_data_ph = i_t_data_ph._data
+                i_t_data_am = i_t_data_am._data
             # Now make sure that inputs to the loop are ep x chan x time
-            if i_data_am.ndim == 2:
-                i_data_am = i_data_am[np.newaxis, ...]
-                i_data_ph = i_data_ph[np.newaxis, ...]
-            # Loop through epochs (or groups of epochs) and each index pair
-            for iep, (ep_ph, ep_am) in enumerate(zip(i_data_ph, i_data_am)):
+            if i_t_data_am.ndim == 2:
+                i_t_data_ph = i_t_data_ph[np.newaxis, ...]
+                i_t_data_am = i_t_data_am[np.newaxis, ...]
+            # Loop through epochs (or epoch grps), each index pair, and funcs
+            data_iter = zip(i_t_data_ph, i_t_data_am)
+            for iep, (ep_ph, ep_am) in enumerate(data_iter):
                 for iix, (i_ix_ph, i_ix_am) in enumerate(ixs_new):
-                    pac[iep, iix, itime] = func(ep_ph[i_ix_ph], ep_am[i_ix_am],
-                                                f_phase, f_amp, filterfn=False)
+                    for ix_func, i_pac_func in enumerate(pac_func):
+                        func = getattr(ppac, i_pac_func)
+                        pac[ix_func, iep, iix, i_f_pair, itime] = func(
+                            ep_ph[i_ix_ph], ep_am[i_ix_am],
+                            f_phase, f_amp, filterfn=False)
             pbar.update_with_increment_value(1)
-        pac_all.append(pac)
-    if len(pac_all) == 1:
-        pac_all = pac_all[0]
+    if pac.shape[0] == 1:
+        pac = pac[0]
     if return_data:
-        return pac_all, data_ph._data, data_am._data
+        return pac, freq_pac, data_ph, data_am
     else:
-        return pac_all
+        return pac, freq_pac
 
 
 def _raw_to_epochs_mne(raw, events, tmin, tmax):
@@ -299,40 +322,51 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
     from scipy.signal import hilbert
 
     kws_filt = dict() if kws_filt is None else kws_filt
-    _range_sanity(f_ph, f_am)
     ix_ph = np.atleast_1d(np.unique(ixs[:, 0]))
     ix_am = np.atleast_1d(np.unique(ixs[:, 1]))
     n_times = data.shape[-1]
 
     # Filter for lo-freq phase
+    for i_f_ph in f_ph:
+        _range_sanity(i_f_ph, f_am[0])
+    for i_f_am in f_am:
+        _range_sanity(f_ph[0], i_f_am)
     data_ph = data[ix_ph, :]
+    # Output will be (n_chan, n_freqs, n_times)
+    out_ph = np.zeros([data_ph.shape[0], f_ph.shape[0], data_ph.shape[1]])
     for ii in range(data_ph.shape[0]):
-        data_ph[ii] = _band_pass_pac(data_ph[ii], f_ph, sfreq,
-                                     n_cycles=n_cycles)
-    N_hil = int(2 ** np.ceil(np.log2(data_ph.shape[-1])))
-    data_ph = np.angle(hilbert(data_ph, N=N_hil)[..., :n_times])
+        for jj, i_f_ph in enumerate(f_ph):
+            out_ph[ii, jj] = _band_pass_pac(data_ph[ii], i_f_ph, sfreq,
+                                            n_cycles=n_cycles)
+    # Now calculate phase w/ Hilbert
+    N_hil = int(2 ** np.ceil(np.log2(out_ph.shape[-1])))
+    out_ph = np.angle(hilbert(out_ph, N=N_hil)[..., :n_times])
     ix_map_ph = dict((ix, i) for i, ix in enumerate(ix_ph))
 
     # Filter for hi-freq amplitude
     data_am = data[ix_am, :]
+    out_am = np.zeros([data_am.shape[0], f_am.shape[0], data_am.shape[1]])
     for ii in range(data_am.shape[0]):
-        data_am[ii] = _band_pass_pac(data_am[ii], f_am, sfreq,
-                                     n_cycles=n_cycles)
-    N_hil = int(2 ** np.ceil(np.log2(data_am.shape[-1])))
-    data_am = np.abs(hilbert(data_am, N=N_hil)[..., :n_times])
+        for jj, i_f_am in enumerate(f_am):
+            out_am[ii, jj] = _band_pass_pac(data_am[ii], i_f_am, sfreq,
+                                            n_cycles=n_cycles)
+        N_hil = int(2 ** np.ceil(np.log2(out_am.shape[-1])))
+        out_am = np.abs(hilbert(out_am, N=N_hil)[..., :n_times])
 
     if hi_phase is True:
         # In case the PAC metric needs high-freq amplitude's phase
-        for ii in range(data_am.shape[0]):
-            data_am[ii] = _band_pass_pac(data_am[ii], f_ph, sfreq,
-                                         n_cycles=n_cycles)
-        N_hil = int(2 ** np.ceil(np.log2(data_ph.shape[-1])))
-        data_am = np.angle(hilbert(data_am, N=N_hil)[..., :n_times])
+        for ii in range(out_am.shape[0]):
+            for jj in range(len(f_am)):
+                out_am[ii, jj] = _band_pass_pac(out_am[ii, jj], f_ph[0], sfreq,
+                                                n_cycles=n_cycles)
+        N_hil = int(2 ** np.ceil(np.log2(out_am.shape[-1])))
+        out_am = np.angle(hilbert(out_am, N=N_hil)[..., :n_times])
     ix_map_am = dict((ix, i) for i, ix in enumerate(ix_am))
 
     if scale_amp_func is not None:
-        data_am = scale_amp_func(data_am, axis=-1)
-    return data_ph, data_am, ix_map_ph, ix_map_am
+        for ii in range(out_am.shape[0]):
+            out_am[ii] = scale_amp_func(out_am[ii], axis=-1)
+    return out_ph, out_am, ix_map_ph, ix_map_am
 
 
 def _raw_to_epochs_array(x, sfreq, events, tmin, tmax):
