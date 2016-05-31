@@ -73,6 +73,11 @@ signal_a = lo_pac + hi_none
 signal_b = lo_none + hi_pac
 
 
+# To standardize the scales of each PAC metric
+def normalize_pac(pac):
+    return (pac - np.min(pac)) / (np.max(pac) - np.min(pac))
+
+
 # We'll visualize these signals. A on the left, B on the right
 # The top row is a combination of the middle and bottom row
 labels = ['Combined Signal', 'Lo-Freq signal', 'Hi-freq signal']
@@ -96,7 +101,7 @@ f_amp_bound = (f_amp-2, f_amp+2)
 
 # First we'll calculate PAC for the entire timeseries.
 # We'll use a few PAC metrics to compare.
-iter_pac_funcs = [['glm', 'ozkurt'], ['plv']]
+iter_pac_funcs = [['mi_tort', 'ozkurt'], ['plv']]
 win_size = 1.  # In seconds
 step_size = .1
 pac_times = np.array(
@@ -116,9 +121,12 @@ for pac_funcs in iter_pac_funcs:
     pac = pac.squeeze()
     if len(pac_funcs) == 1:
         pac = pac[np.newaxis, ...]
+    for i in range(pac.shape[0]):
+        pac[i] = normalize_pac(pac[i])
+    # Now plot timeseries of each
     for i_pac, i_name in zip(pac, pac_funcs):
         for i_pac_ix, ax in zip(i_pac.squeeze(), axs):
-            ax.plot(i_pac_ix.squeeze(), label=i_name)
+            ax.plot(pac_times.mean(-1), i_pac_ix, label=i_name)
 axs[0].legend()
 axs[0].set_title('PAC: low-freq A to high-freq B', fontsize=20)
 axs[1].set_title('PAC: low-freq B to high-freq A', fontsize=20)
@@ -131,7 +139,7 @@ plt.tight_layout()
 ev = np.array(event_times) * sfreq
 ev = ev.astype(int)
 
-pac_funcs = ['glm', 'ozkurt']
+pac_funcs = ['mi_tort', 'ozkurt']
 colors = ['b', 'r']
 win_size = 1.
 ev_tmin = -2.
@@ -143,6 +151,8 @@ pac, pac_freqs = phase_amplitude_coupling(
     pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
     events=ev, concat_epochs=False)
 pac = pac.squeeze()
+for i in range(pac.shape[0]):
+    pac[i] = normalize_pac(pac[i])
 
 # This allows us to calculate the stability of PAC across epochs
 fig, axs = plt.subplots(1, 2, sharey=True, figsize=(10, 5))
@@ -165,15 +175,17 @@ freqs_amp = np.array([(i-.1, i+.1)
 
 pac, pac_freqs = phase_amplitude_coupling(
     raw, freqs_phase, freqs_amp, ixs,
-    pac_func=['ozkurt'], tmin=.2, tmax=1,
+    pac_func=['ozkurt'], tmin=.2, tmax=event_dur - .2,
     events=ev, concat_epochs=True, n_cycles=5)
 pac = pac.squeeze()
+pac = normalize_pac(pac)
 
 f, axs = plt.subplots(1, 2, figsize=(10, 5))
 for ax, i_pac in zip(axs, pac):
     comod = i_pac.reshape([-1, len(freqs_amp)]).T
     ax.pcolormesh(freqs_phase[:, 0], freqs_amp[:, 0], comod,
-                  vmin=0, vmax=.4)
+                  vmin=0, vmax=1)
+    print(pac.max())
 _ = plt.setp(axs, xlim=[freqs_phase[:, 0].min(), freqs_phase[:, 0].max()],
              ylim=[freqs_amp[:, 0].min(), freqs_amp[:, 0].max()],
              xlabel='Frequency Phase (Hz)', ylabel='Frequency Amplitude (Hz)')

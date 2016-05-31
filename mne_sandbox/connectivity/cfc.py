@@ -23,17 +23,20 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
     ----------
     inst : an instance of Raw or Epochs
         The data used to calculate PAC.
-    f_phase : array, dtype float, shape (n_bands, 2,)
-        The frequency range to use for low-frequency phase carrier.
-    f_amp : array, dtype float, shape (n_bands, 2,)
-        The frequency range to use for high-frequency amplitude modulation.
-    ixs : array-like, shape (n_pairs x 2)
+    f_phase : array, dtype float, shape (n_bands_phase, 2,)
+        The frequency ranges to use for the phase carrier. PAC will be
+        calculated between n_bands_phase * n_bands_amp frequencies.
+    f_amp : array, dtype float, shape (n_bands_amp, 2,)
+        The frequency ranges to use for the phase-modulated amplitude.
+        PAC will be calculated between n_bands_phase * n_bands_amp frequencies.
+    ixs : array-like, shape (n_ch_pairs x 2)
         The indices for low/high frequency channels. PAC will be estimated
-        between n_pairs of channels. Indices correspond to rows of `data`.
+        between n_ch_pairs of channels. Indices correspond to rows of `data`.
     pac_func : {'plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'} |
                list of strings
         The function for estimating PAC. Corresponds to functions in
-        `pacpy.pac`. Defaults to 'ozkurt'.
+        `pacpy.pac`. Defaults to 'ozkurt'. If multiple frequency bands are used
+        then `plv` cannot be calculated.
     events : array, shape (n_events, 3) | array, shape (n_events,) | None
         MNE events array. To be supplied if data is 2D and output should be
         split by events. In this case, `tmin` and `tmax` must be provided. If
@@ -59,7 +62,7 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
         Defaults to no scaling.
     return_data : bool
         If False, output will be `[pac_out]`. If True, output will be,
-        `[pac_out, low_freq_phase, hi_freq_amplitude]`.
+        `[pac_out, phase_signal, amp_signal]`.
     concat_epochs : bool
         If True, epochs will be concatenated before calculating PAC values. If
         epochs are relatively short, this is a good idea in order to improve
@@ -71,11 +74,13 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
 
     Returns
     -------
-    pac_out : array, list of arrays, dtype float, shape (n_epochs, n_pairs,
-              n_times)
-        The computed phase-amplitude coupling between
-        each pair of data sources given in ixs. If multiple pac metrics are
-        specified, there will be one array per metric in the output list.
+    pac_out : array, list of arrays, dtype float,
+              shape([n_pac_funcs], n_epochs, n_channel_pairs,
+                    n_freq_pairs, n_pac_windows).
+        The computed phase-amplitude coupling between each pair of data sources
+        given in ixs. If multiple pac metrics are specified, there will be one
+        array per metric in the output list. If n_pac_funcs is 1, then the
+        first dimension will be dropped.
     [phase_signal] : array, shape (n_phase_signals, n_times,)
         Only returned if `return_data` is True. The phase timeseries of the
         phase signals (first column of `ixs`).
@@ -123,17 +128,20 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         The data used to calculate PAC
     sfreq : float
         The sampling frequency of the data.
-    f_phase : array, dtype float, shape (n_bands, 2,)
-        The frequency range to use for low-frequency phase carrier.
-    f_amp : array, dtype float, shape (n_bands, 2,)
-        The frequency range to use for high-frequency amplitude modulation.
-    ixs : array-like, shape (n_pairs x 2)
+    f_phase : array, dtype float, shape (n_bands_phase, 2,)
+        The frequency ranges to use for the phase carrier. PAC will be
+        calculated between n_bands_phase * n_bands_amp frequencies.
+    f_amp : array, dtype float, shape (n_bands_amp, 2,)
+        The frequency ranges to use for the phase-modulated amplitude.
+        PAC will be calculated between n_bands_phase * n_bands_amp frequencies.
+    ixs : array-like, shape (n_ch_pairs x 2)
         The indices for low/high frequency channels. PAC will be estimated
-        between n_pairs of channels. Indices correspond to rows of `data`.
+        between n_ch_pairs of channels. Indices correspond to rows of `data`.
     pac_func : {'plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'} |
                list of strings
         The function for estimating PAC. Corresponds to functions in
-        `pacpy.pac`. Defaults to 'ozkurt'.
+        `pacpy.pac`. Defaults to 'ozkurt'. If multiple frequency bands are used
+        then `plv` cannot be calculated.
     events : array, shape (n_events, 3) | array, shape (n_events,) | None
         MNE events array. To be supplied if data is 2D and output should be
         split by events. In this case, `tmin` and `tmax` must be provided. If
@@ -159,7 +167,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         Defaults to no scaling.
     return_data : bool
         If False, output will be `[pac_out]`. If True, output will be,
-        `[pac_out, low_freq_phase, hi_freq_amplitude]`.
+        `[pac_out, phase_signal, amp_signal]`.
     concat_epochs : bool
         If True, epochs will be concatenated before calculating PAC values. If
         epochs are relatively short, this is a good idea in order to improve
@@ -171,11 +179,13 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
 
     Returns
     -------
-    pac_out : array, list of arrays, dtype float, shape (n_epochs, n_pairs,
-              n_times)
-        The computed phase-amplitude coupling between
-        each pair of data sources given in ixs. If multiple pac metrics are
-        specified, there will be one array per metric in the output list.
+    pac_out : array, list of arrays, dtype float,
+              shape([n_pac_funcs], n_epochs, n_channel_pairs,
+                    n_freq_pairs, n_pac_windows).
+        The computed phase-amplitude coupling between each pair of data sources
+        given in ixs. If multiple pac metrics are specified, there will be one
+        array per metric in the output list. If n_pac_funcs is 1, then the
+        first dimension will be dropped.
     [phase_signal] : array, shape (n_phase_signals, n_times,)
         Only returned if `return_data` is True. The phase timeseries of the
         phase signals (first column of `ixs`).
@@ -190,9 +200,10 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
             raise ValueError("PAC function %s is not supported" % i_func)
     n_pac_funcs = pac_func.shape[0]
     ixs = np.array(ixs, ndmin=2)
+    n_ch_pairs = ixs.shape[0]
     tmin = 0 if tmin is None else tmin
     tmin = np.atleast_1d(tmin)
-    n_times = len(tmin)
+    n_pac_windows = len(tmin)
     tmax = (data.shape[-1] - 1) / float(sfreq) if tmax is None else tmax
     tmax = np.atleast_1d(tmax)
     f_phase = np.atleast_2d(f_phase)
@@ -220,14 +231,14 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
 
     # So we know how big the PAC output will be
     if events is None:
-        n_ep = 1
+        n_epochs = 1
     elif concat_epochs is True:
         if events.ndim == 1:
-            n_ep = 1
+            n_epochs = 1
         else:
-            n_ep = np.unique(events[:, -1]).shape[0]
+            n_epochs = np.unique(events[:, -1]).shape[0]
     else:
-        n_ep = events.shape[0]
+        n_epochs = events.shape[0]
 
     # Iterate through each pair of frequencies
     ixs_freqs = product(range(data_ph.shape[1]), range(data_am.shape[1]))
@@ -235,7 +246,8 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
 
     freq_pac = np.array([[f_phase[ii], f_amp[jj]] for ii, jj in ixs_freqs])
     n_f_pairs = len(ixs_freqs)
-    pac = np.zeros([n_pac_funcs, n_ep, ixs.shape[0], n_f_pairs, n_times])
+    pac = np.zeros([n_pac_funcs, n_epochs, n_ch_pairs,
+                    n_f_pairs, n_pac_windows])
     for i_f_pair, (ix_f_ph, ix_f_am) in enumerate(ixs_freqs):
         # Second dimension is frequency
         i_f_data_ph = data_ph[:, ix_f_ph, ...]
@@ -254,7 +266,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
             i_f_data_am = _raw_to_epochs_mne(i_f_data_am, events, tmin, tmax)
 
         # Data is either Raw or Epochs
-        pbar = ProgressBar(n_ep)
+        pbar = ProgressBar(n_epochs)
         for itime, (i_tmin, i_tmax) in enumerate(zip(tmin, tmax)):
             # Pull times of interest
             with warnings.catch_warnings():  # To suppress a depracation
@@ -325,6 +337,10 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
     ix_ph = np.atleast_1d(np.unique(ixs[:, 0]))
     ix_am = np.atleast_1d(np.unique(ixs[:, 1]))
     n_times = data.shape[-1]
+    n_unique_ph = ix_ph.shape[0]
+    n_unique_am = ix_am.shape[0]
+    n_f_pairs_ph = f_ph.shape[0]
+    n_f_pairs_am = f_am.shape[0]
 
     # Filter for lo-freq phase
     for i_f_ph in f_ph:
@@ -333,38 +349,38 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
         _range_sanity(f_ph[0], i_f_am)
     data_ph = data[ix_ph, :]
     # Output will be (n_chan, n_freqs, n_times)
-    out_ph = np.zeros([data_ph.shape[0], f_ph.shape[0], data_ph.shape[1]])
-    for ii in range(data_ph.shape[0]):
+    out_ph = np.zeros([n_unique_ph, n_f_pairs_ph, n_times])
+    for ii in range(n_unique_ph):
         for jj, i_f_ph in enumerate(f_ph):
             out_ph[ii, jj] = _band_pass_pac(data_ph[ii], i_f_ph, sfreq,
                                             n_cycles=n_cycles)
     # Now calculate phase w/ Hilbert
-    N_hil = int(2 ** np.ceil(np.log2(out_ph.shape[-1])))
-    out_ph = np.angle(hilbert(out_ph, N=N_hil)[..., :n_times])
+    n_hil = int(2 ** np.ceil(np.log2(n_times)))
+    out_ph = np.angle(hilbert(out_ph, N=n_hil)[..., :n_times])
     ix_map_ph = dict((ix, i) for i, ix in enumerate(ix_ph))
 
     # Filter for hi-freq amplitude
     data_am = data[ix_am, :]
-    out_am = np.zeros([data_am.shape[0], f_am.shape[0], data_am.shape[1]])
-    for ii in range(data_am.shape[0]):
+    out_am = np.zeros([n_unique_am, n_f_pairs_am, n_times])
+    for ii in range(n_unique_am):
         for jj, i_f_am in enumerate(f_am):
             out_am[ii, jj] = _band_pass_pac(data_am[ii], i_f_am, sfreq,
                                             n_cycles=n_cycles)
-        N_hil = int(2 ** np.ceil(np.log2(out_am.shape[-1])))
-        out_am = np.abs(hilbert(out_am, N=N_hil)[..., :n_times])
+    n_hil = int(2 ** np.ceil(np.log2(n_times)))
+    out_am = np.abs(hilbert(out_am, N=n_hil)[..., :n_times])
 
     if hi_phase is True:
         # In case the PAC metric needs high-freq amplitude's phase
-        for ii in range(out_am.shape[0]):
+        for ii in range(n_unique_am):
             for jj in range(len(f_am)):
                 out_am[ii, jj] = _band_pass_pac(out_am[ii, jj], f_ph[0], sfreq,
                                                 n_cycles=n_cycles)
-        N_hil = int(2 ** np.ceil(np.log2(out_am.shape[-1])))
-        out_am = np.angle(hilbert(out_am, N=N_hil)[..., :n_times])
+        n_hil = int(2 ** np.ceil(np.log2(n_times)))
+        out_am = np.angle(hilbert(out_am, N=n_hil)[..., :n_times])
     ix_map_am = dict((ix, i) for i, ix in enumerate(ix_am))
 
     if scale_amp_func is not None:
-        for ii in range(out_am.shape[0]):
+        for ii in range(n_unique_am):
             out_am[ii] = scale_amp_func(out_am[ii], axis=-1)
     return out_ph, out_am, ix_map_ph, ix_map_am
 
