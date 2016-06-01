@@ -77,7 +77,7 @@ raw_artificial = raw.copy()
 raw_artificial._data[ix_amp] += raw_band._data[ix_amp]
 
 for i_data in [raw, raw_artificial]:
-    pac = phase_amplitude_coupling(
+    pac, freqs_pac = phase_amplitude_coupling(
         i_data, f_range_phase, f_range_amp, ixs, pac_func='glm',
         events=ev_ixs, tmin=0, tmax=.5)
     pac = pac.mean()  # Average across events

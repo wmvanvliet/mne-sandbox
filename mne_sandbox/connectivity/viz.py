@@ -50,25 +50,27 @@ def plot_phase_locked_amplitude(epochs, freqs_phase, freqs_amp,
     if 'cmap' not in amp_kwargs.keys():
         amp_kwargs['cmap'] = plt.cm.RdBu_r
 
-    data_amp, data_phase, times = phase_locked_amplitude(
+    data_am, data_ph, times = phase_locked_amplitude(
         epochs, freqs_phase, freqs_amp,
         ix_ph, ix_amp, tmin=tmin, tmax=tmax, mask_times=mask_times)
 
     if normalize is True:
         # Scale within freqs across time
-        data_amp = scale(data_amp, axis=-1)
+        data_am = scale(data_am, axis=-1)
 
     # Plotting
     f, axs = plt.subplots(2, 1)
     ax = axs[0]
-    ax.pcolormesh(times, freqs_amp, data_amp, **amp_kwargs)
+    ax.pcolormesh(times, freqs_amp, data_am, **amp_kwargs)
 
     ax = axs[1]
-    ax.plot(times, data_phase, **ph_kwargs)
+    ax.plot(times, data_ph, **ph_kwargs)
 
-    plt.setp(axs, xlim=(times[0], times[-1]))
+    plt.setp(axs, xlim=[times[0], times[-1]])
+    ylim = np.max(np.abs(ax.get_ylim()))
+    plt.setp(ax, ylim=[-ylim, ylim])
     if return_data is True:
-        return ax, data_amp, data_phase
+        return ax, data_am, data_ph
     else:
         return ax
 
@@ -113,12 +115,12 @@ def plot_phase_binned_amplitude(epochs, freqs_phase, freqs_amp,
         The axis used for plotting.
     """
     from .cfc import phase_binned_amplitude
-    from sklearn.preprocessing import MinMaxScaler
+    from sklearn.preprocessing import RobustScaler
     amps, bins = phase_binned_amplitude(epochs, freqs_phase, freqs_amp,
                                         ix_ph, ix_amp, n_bins=n_bins,
                                         mask_times=mask_times)
     if normalize is True:
-        amps = MinMaxScaler().fit_transform(amps)
+        amps = RobustScaler().fit_transform(amps[:, np.newaxis])
     if ax is None:
         plt.figure()
         ax = plt.subplot(111, polar=True)

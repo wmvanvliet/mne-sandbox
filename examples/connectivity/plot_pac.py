@@ -22,9 +22,12 @@ import numpy as np
 from matplotlib import pyplot as plt
 from mne_sandbox.connectivity import (simulate_pac_signal,
                                       phase_amplitude_coupling)
+import logging
 
 print(__doc__)
 np.random.seed(1337)
+logger = logging.getLogger('mne')
+logger.setLevel(50)
 
 ###############################################################################
 # Phase-amplitude coupling (PAC) is a technique to determine if the
@@ -75,7 +78,7 @@ signal_b = lo_none + hi_pac
 
 # To standardize the scales of each PAC metric
 def normalize_pac(pac):
-    return (pac - np.min(pac)) / (np.max(pac) - np.min(pac))
+    return pac / np.mean(pac)
 
 
 # We'll visualize these signals. A on the left, B on the right
@@ -112,6 +115,7 @@ pac_times = np.array(
 ixs = np.array([[0, 1],
                 [1, 0]])
 fig, axs = plt.subplots(2, 1, figsize=(10, 5))
+ylim = 0
 all_pac = []
 for pac_funcs in iter_pac_funcs:
     pac, pac_freqs = phase_amplitude_coupling(
@@ -127,10 +131,11 @@ for pac_funcs in iter_pac_funcs:
     for i_pac, i_name in zip(pac, pac_funcs):
         for i_pac_ix, ax in zip(i_pac.squeeze(), axs):
             ax.plot(pac_times.mean(-1), i_pac_ix, label=i_name)
+    ylim = np.max(pac) if np.max(pac) > ylim else ylim  # For proper scale
 axs[0].legend()
 axs[0].set_title('PAC: low-freq A to high-freq B', fontsize=20)
 axs[1].set_title('PAC: low-freq B to high-freq A', fontsize=20)
-_ = plt.setp(axs, ylim=[0, 1.1])
+_ = plt.setp(axs, ylim=[0, ylim + .1])
 plt.tight_layout()
 
 
@@ -184,7 +189,7 @@ f, axs = plt.subplots(1, 2, figsize=(10, 5))
 for ax, i_pac in zip(axs, pac):
     comod = i_pac.reshape([-1, len(freqs_amp)]).T
     ax.pcolormesh(freqs_phase[:, 0], freqs_amp[:, 0], comod,
-                  vmin=0, vmax=1)
+                  vmin=0, vmax=np.max(pac) + .1)
     print(pac.max())
 _ = plt.setp(axs, xlim=[freqs_phase[:, 0].min(), freqs_phase[:, 0].max()],
              ylim=[freqs_amp[:, 0].min(), freqs_amp[:, 0].max()],

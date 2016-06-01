@@ -2,6 +2,7 @@ import numpy as np
 from mne.time_frequency import cwt_morlet
 from mne.preprocessing import peak_finder
 from mne.utils import ProgressBar, logger
+from scipy.signal import hilbert
 from itertools import product
 import mne
 import warnings
@@ -331,7 +332,6 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
                       hi_phase=False, scale_amp_func=None, kws_filt=None):
     """Filter for phase/amp only once for each channel."""
     from ..externals.pacpy.pac import _range_sanity
-    from scipy.signal import hilbert
 
     kws_filt = dict() if kws_filt is None else kws_filt
     ix_ph = np.atleast_1d(np.unique(ixs[:, 0]))
@@ -347,36 +347,24 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
         _range_sanity(i_f_ph, f_am[0])
     for i_f_am in f_am:
         _range_sanity(f_ph[0], i_f_am)
+
+    # Output will be (n_chan, n_freqs, n_times). Operates in place.
     data_ph = data[ix_ph, :]
-    # Output will be (n_chan, n_freqs, n_times)
-    out_ph = np.zeros([n_unique_ph, n_f_pairs_ph, n_times])
-    for ii in range(n_unique_ph):
-        for jj, i_f_ph in enumerate(f_ph):
-            out_ph[ii, jj] = _band_pass_pac(data_ph[ii], i_f_ph, sfreq,
-                                            n_cycles=n_cycles)
-    # Now calculate phase w/ Hilbert
-    n_hil = int(2 ** np.ceil(np.log2(n_times)))
-    out_ph = np.angle(hilbert(out_ph, N=n_hil)[..., :n_times])
-    ix_map_ph = dict((ix, i) for i, ix in enumerate(ix_ph))
+    out_ph = _filter_and_hilbert(data_ph, sfreq, f_ph, n_cycles)
+    out_ph = np.angle(out_ph)
 
-    # Filter for hi-freq amplitude
     data_am = data[ix_am, :]
-    out_am = np.zeros([n_unique_am, n_f_pairs_am, n_times])
-    for ii in range(n_unique_am):
-        for jj, i_f_am in enumerate(f_am):
-            out_am[ii, jj] = _band_pass_pac(data_am[ii], i_f_am, sfreq,
-                                            n_cycles=n_cycles)
-    n_hil = int(2 ** np.ceil(np.log2(n_times)))
-    out_am = np.abs(hilbert(out_am, N=n_hil)[..., :n_times])
-
+    out_am = _filter_and_hilbert(data_am, sfreq, f_am, n_cycles)
+    out_am = np.abs(out_am)
     if hi_phase is True:
-        # In case the PAC metric needs high-freq amplitude's phase
-        for ii in range(n_unique_am):
-            for jj in range(len(f_am)):
-                out_am[ii, jj] = _band_pass_pac(out_am[ii, jj], f_ph[0], sfreq,
-                                                n_cycles=n_cycles)
-        n_hil = int(2 ** np.ceil(np.log2(n_times)))
-        out_am = np.angle(hilbert(out_am, N=n_hil)[..., :n_times])
+        # We assume f_ph has len(1), multiple freqs not supported w/ plv
+        f_ph_am = f_ph[:1, :]
+        out_am = _filter_and_hilbert(out_am, sfreq, f_ph, n_cycles,
+                                     inplace=True)
+        out_am = np.angle(out_am)
+
+    # New index mapping for unique channels
+    ix_map_ph = dict((ix, i) for i, ix in enumerate(ix_ph))
     ix_map_am = dict((ix, i) for i, ix in enumerate(ix_am))
 
     if scale_amp_func is not None:
@@ -414,6 +402,26 @@ def _raw_to_epochs_array(x, sfreq, events, tmin, tmax):
     return epochs, times, msk_keep
 
 
+def _filter_and_hilbert(data, sfreq, frequencies, n_cycles, inplace=False):
+    if inplace is True:
+        # Assume data is (n_chan, n_freqs, n_times)
+        n_channels, n_freqs, n_times = data.shape
+        out = data
+    else:
+        n_freqs = frequencies.shape[0]
+        n_channels, n_times = data.shape
+        data = data[:, np.newaxis, :]  # To ensure shapes are always consistent
+        out = np.zeros([n_channels, n_freqs, n_times])
+    # Filtering in place
+    for ii in range(n_channels):
+        for jj in range(n_freqs):
+            out[ii, jj] = _band_pass_pac(data[ii, 0], frequencies[jj], sfreq,
+                                         n_cycles=n_cycles)
+    n_hil = int(2 ** np.ceil(np.log2(n_times)))
+    out = hilbert(out, N=n_hil)[..., :n_times]
+    return out
+
+
 def phase_locked_amplitude(inst, freqs_phase, freqs_amp, ix_ph, ix_amp,
                            tmin=-.5, tmax=.5, mask_times=None):
     """Calculate the average amplitude of a signal at a phase of another.
@@ -441,10 +449,10 @@ def phase_locked_amplitude(inst, freqs_phase, freqs_amp, ix_ph, ix_amp,
 
     Returns
     -------
-    data_amp : np.array
+    data_am : np.array
         The mean amplitude values for the frequencies specified in `freqs_amp`,
         time-locked to peaks of the low-frequency phase.
-    data_phase : np.array
+    data_ph : np.array
         The mean low-frequency signal, phase-locked to low-frequency phase
         peaks.
     times : np.array
@@ -452,9 +460,9 @@ def phase_locked_amplitude(inst, freqs_phase, freqs_amp, ix_ph, ix_amp,
     """
     sfreq = inst.info['sfreq']
     # Pull the amplitudes/phases using Morlet
-    data_ph, data_amp = _pull_data(inst, ix_ph, ix_amp)
+    data_ph, data_am = _pull_data(inst, ix_ph, ix_amp)
     angle_ph, band_ph, amp = _extract_phase_and_amp(
-        data_ph, data_amp, sfreq, freqs_phase, freqs_amp)
+        data_ph, data_am, sfreq, freqs_phase, freqs_amp)
 
     angle_ph = angle_ph.mean(0)  # Mean across freq bands
     band_ph = band_ph.mean(0)
@@ -472,22 +480,22 @@ def phase_locked_amplitude(inst, freqs_phase, freqs_amp, ix_ph, ix_amp,
             raise ValueError('mask_times must be == in length to data')
         band_ph[..., ~mask_times] = np.nan
 
-    data_phase, times, msk_window = _raw_to_epochs_array(
+    data_ph, times, msk_window = _raw_to_epochs_array(
         band_ph[np.newaxis, :], sfreq, phase_peaks, tmin, tmax)
-    data_amp, times, msk_window = _raw_to_epochs_array(
+    data_am, times, msk_window = _raw_to_epochs_array(
         amp, sfreq, phase_peaks, tmin, tmax)
-    data_phase = data_phase.squeeze()
-    data_amp = data_amp.squeeze()
+    data_ph = data_ph.squeeze()
+    data_am = data_am.squeeze()
 
     # Drop any peak events where there was a nan
-    keep_rows = np.where(~np.isnan(data_phase).any(-1))[0]
-    data_phase = data_phase[keep_rows, ...]
-    data_amp = data_amp[keep_rows, ...]
+    keep_rows = np.where(~np.isnan(data_ph).any(-1))[0]
+    data_ph = data_ph[keep_rows, ...]
+    data_am = data_am[keep_rows, ...]
 
     # Average across phase peak events
-    data_amp = data_amp.mean(0)
-    data_phase = data_phase.mean(0)
-    return data_amp, data_phase, times
+    data_am = data_am.mean(0)
+    data_ph = data_ph.mean(0)
+    return data_am, data_ph, times
 
 
 def phase_binned_amplitude(inst, freqs_phase, freqs_amp,
@@ -525,9 +533,9 @@ def phase_binned_amplitude(inst, freqs_phase, freqs_amp,
     """
     sfreq = inst.info['sfreq']
     # Pull the amplitudes/phases using Morlet
-    data_ph, data_amp = _pull_data(inst, ix_ph, ix_amp)
+    data_ph, data_am = _pull_data(inst, ix_ph, ix_amp)
     angle_ph, band_ph, amp = _extract_phase_and_amp(
-        data_ph, data_amp, sfreq, freqs_phase, freqs_amp)
+        data_ph, data_am, sfreq, freqs_phase, freqs_amp)
     angle_ph = angle_ph.mean(0)  # Mean across freq bands
     if mask_times is not None:
         # Only keep times we want
@@ -548,15 +556,15 @@ def phase_binned_amplitude(inst, freqs_phase, freqs_amp,
 
 
 # For the viz functions
-def _extract_phase_and_amp(data_phase, data_amp, sfreq, freqs_phase,
+def _extract_phase_and_amp(data_ph, data_am, sfreq, freqs_phase,
                            freqs_amp, scale=True):
     """Extract the phase and amplitude of two signals for PAC viz.
     data should be shape (n_epochs, n_times)"""
     from sklearn.preprocessing import scale
 
     # Morlet transform to get complex representation
-    band_ph = cwt_morlet(data_phase, sfreq, freqs_phase)
-    band_amp = cwt_morlet(data_amp, sfreq, freqs_amp)
+    band_ph = cwt_morlet(data_ph, sfreq, freqs_phase)
+    band_amp = cwt_morlet(data_am, sfreq, freqs_amp)
 
     # Calculate the phase/amplitude of relevant signals across epochs
     band_ph_stacked = np.hstack(np.real(band_ph))
@@ -575,11 +583,11 @@ def _pull_data(inst, ix_ph, ix_amp, events=None, tmin=None, tmax=None):
     from mne.epochs import _BaseEpochs
     if isinstance(inst, _BaseEpochs):
         data_ph = inst.get_data()[:, ix_ph, :]
-        data_amp = inst.get_data()[:, ix_amp, :]
+        data_am = inst.get_data()[:, ix_amp, :]
     elif isinstance(inst, _BaseRaw):
         data = inst[[ix_ph, ix_amp], :][0].squeeze()
-        data_ph, data_amp = [i[np.newaxis, ...] for i in data]
-    return data_ph, data_amp
+        data_ph, data_am = [i[np.newaxis, ...] for i in data]
+    return data_ph, data_am
 
 
 def _band_pass_pac(x, f_range, sfreq=1000, n_cycles=3):
