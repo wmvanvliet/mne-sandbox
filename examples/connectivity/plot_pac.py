@@ -121,7 +121,7 @@ for pac_funcs in iter_pac_funcs:
     pac, pac_freqs = phase_amplitude_coupling(
         raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ixs,
         pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
-        n_cycles=3)
+        n_cycles_ph=3, n_cycles_am=3)
     pac = pac.squeeze()
     if len(pac_funcs) == 1:
         pac = pac[np.newaxis, ...]
@@ -177,11 +177,14 @@ freqs_phase = np.array([(i-.1, i+.1)
                         for i in np.arange(3, 12, 1)])
 freqs_amp = np.array([(i-.1, i+.1)
                       for i in np.arange(f_amp-20, f_amp+20, 5)])
-
+# We can set a variable number of cycles per freq to control bandwidth
+cycles_phase = 5.
+cycles_amp = freqs_amp.mean(-1) / 10.
 pac, pac_freqs = phase_amplitude_coupling(
     raw, freqs_phase, freqs_amp, ixs,
     pac_func=['ozkurt'], tmin=.2, tmax=event_dur - .2,
-    events=ev, concat_epochs=True, n_cycles=5)
+    events=ev, concat_epochs=True, n_cycles_ph=cycles_phase,
+    n_cycles_am=cycles_amp)
 pac = pac.squeeze()
 pac = normalize_pac(pac)
 

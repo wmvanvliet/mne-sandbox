@@ -91,13 +91,23 @@ def test_phase_amplitude_coupling():
     f_band_hi_mult = [f_band_hi, (14, 16)]
     conn, fbands = phase_amplitude_coupling(
         raw, f_band_lo_mult, f_band_hi_mult, ixs_pac, pac_func=pac_func,
-        tmin=event_times, tmax=event_times + event_dur, n_cycles=4)
+        tmin=event_times, tmax=event_times + event_dur, n_cycles_ph=4,
+        n_cycles_am=4)
     # Make sure shapes are right
     assert_equal(conn.shape[2], 4)
     assert_equal(len(fbands), 4)
     assert_true(conn[:, 0, 0, :].mean() > max_pac)  # pac freqs
     # Loosening the min value for frequency because of freq spillage
     assert_true(conn[:, 0, 1, :].mean() < .1)  # Non-pac freqs
+
+    # Testing multiple n_cycles
+    assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo_mult,
+                  f_band_hi_mult, ixs_pac, pac_func=pac_func,
+                  n_cycles_ph=[3, 4, 5], n_cycles_am=4)
+    assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo_mult,
+                  f_band_hi_mult, ixs_pac, pac_func=pac_func,
+                  tmin=event_times, tmax=event_times + event_dur,
+                  n_cycles_ph=[[3, 4, 5]], n_cycles_am=4)
 
     # Testing Raw + multiple PAC
     conn, _ = phase_amplitude_coupling(

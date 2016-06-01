@@ -15,8 +15,9 @@ _hi_phase_funcs = ['plv']
 
 
 def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
-                             events=None, tmin=None, tmax=None, n_cycles=3,
-                             scale_amp_func=None,  return_data=False,
+                             events=None, tmin=None, tmax=None,
+                             n_cycles_ph=3, n_cycles_am=3,
+                             scale_amp_func=None, return_data=False,
                              concat_epochs=False, n_jobs=1, verbose=None):
     """ Compute phase-amplitude coupling between pairs of signals using pacpy.
 
@@ -53,9 +54,12 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
         If `events` is provided, it is the time (in seconds) to include after
         each event index. If a list of floats is given, then PAC is calculated
         for each pair of `tmin` and `tmax`. Defaults to `max(inst.n_times)`.
-    n_cycles : int | None
+    n_cycles_ph : float, int | array of floats, shape (n_bands_phase,)
         The number of cycles to be included in the window for each band-pass
-        filter. Defaults to 3.
+        filter for phase. Defaults to 3.
+    n_cycles_am : float, int | array of floats, shape (n_bands_amp,)
+        The number of cycles to be included in the window for each band-pass
+        filter for amplitude. Defaults to 3.
     scale_amp_func : None | function
         If not None, will be called on each amplitude signal in order to scale
         the values. Function must accept an N-D input and will operate on the
@@ -101,7 +105,9 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
     data = inst[:][0]
     pac = _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
                                     pac_func=pac_func, events=events,
-                                    tmin=tmin, tmax=tmax, n_cycles=n_cycles,
+                                    tmin=tmin, tmax=tmax,
+                                    n_cycles_ph=n_cycles_ph,
+                                    n_cycles_am=n_cycles_am,
                                     scale_amp_func=scale_amp_func,
                                     return_data=return_data,
                                     concat_epochs=concat_epochs,
@@ -117,10 +123,10 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
 
 def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
                               pac_func='ozkurt', events=None,
-                              tmin=None, tmax=None, n_cycles=3,
-                              scale_amp_func=None, return_data=False,
-                              concat_epochs=False, n_jobs=1,
-                              verbose=None):
+                              tmin=None, tmax=None, n_cycles_ph=3,
+                              n_cycles_am=3, scale_amp_func=None,
+                              return_data=False, concat_epochs=False,
+                              n_jobs=1, verbose=None):
     """ Compute phase-amplitude coupling using pacpy.
 
     Parameters
@@ -158,9 +164,12 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         If `events` is provided, it is the time (in seconds) to include after
         each event index. If a list of floats is given, then PAC is calculated
         for each pair of `tmin` and `tmax`. Defaults to `max(inst.n_times)`.
-    n_cycles : int | None
+    n_cycles_ph : float, int | array of floats, shape (n_bands_phase,)
         The number of cycles to be included in the window for each band-pass
-        filter. Defaults to 3.
+        filter for phase. Defaults to 3.
+    n_cycles_am : float, int | array of floats, shape (n_bands_amp,)
+        The number of cycles to be included in the window for each band-pass
+        filter for amplitude. Defaults to 3.
     scale_amp_func : None | function
         If not None, will be called on each amplitude signal in order to scale
         the values. Function must accept an N-D input and will operate on the
@@ -209,6 +218,12 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     tmax = np.atleast_1d(tmax)
     f_phase = np.atleast_2d(f_phase)
     f_amp = np.atleast_2d(f_amp)
+    n_cycles_ph = np.atleast_1d(n_cycles_ph)
+    n_cycles_am = np.atleast_1d(n_cycles_am)
+    if n_cycles_ph.shape[0] == 1:
+        n_cycles_ph = np.repeat(n_cycles_ph, f_phase.shape[0])
+    if n_cycles_am.shape[0] == 1:
+        n_cycles_am = np.repeat(n_cycles_am, f_amp.shape[0])
 
     if data.ndim != 2:
         raise ValueError('Data must be shape (n_channels, n_times)')
@@ -220,6 +235,11 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         raise ValueError('tmin and tmax have differing lengths')
     if any(i_f.shape[0] > 1 and 'plv' in pac_func for i_f in (f_amp, f_phase)):
         raise ValueError('If calculating PLV, must use a single pair of freqs')
+    for icyc, i_f in zip([n_cycles_ph, n_cycles_am], [f_phase, f_amp]):
+        if icyc.shape[0] != i_f.shape[0]:
+            raise ValueError("n_cycles must match n_freq_bands")
+        if icyc.ndim > 1:
+            raise ValueError("n_cycles must be 1-d, not {}d".format(icyc.ndim))
 
     logger.info('Pre-filtering data and extracting phase/amplitude...')
     hi_phase = np.unique([i_func in _hi_phase_funcs for i_func in pac_func])
@@ -228,7 +248,8 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     hi_phase = bool(hi_phase[0])
     data_ph, data_am, ix_map_ph, ix_map_am = _pre_filter_ph_am(
         data, sfreq, ixs, f_phase, f_amp, hi_phase=hi_phase,
-        scale_amp_func=scale_amp_func, n_cycles=n_cycles)
+        scale_amp_func=scale_amp_func, n_cycles_ph=n_cycles_ph,
+        n_cycles_am=n_cycles_am)
 
     # So we know how big the PAC output will be
     if events is None:
@@ -328,19 +349,16 @@ def _raw_to_epochs_mne(raw, events, tmin, tmax):
                       baseline=None)
 
 
-def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
-                      hi_phase=False, scale_amp_func=None, kws_filt=None):
+def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles_ph=3,
+                      n_cycles_am=3, hi_phase=False, scale_amp_func=None,
+                      kws_filt=None):
     """Filter for phase/amp only once for each channel."""
     from ..externals.pacpy.pac import _range_sanity
 
     kws_filt = dict() if kws_filt is None else kws_filt
     ix_ph = np.atleast_1d(np.unique(ixs[:, 0]))
     ix_am = np.atleast_1d(np.unique(ixs[:, 1]))
-    n_times = data.shape[-1]
-    n_unique_ph = ix_ph.shape[0]
     n_unique_am = ix_am.shape[0]
-    n_f_pairs_ph = f_ph.shape[0]
-    n_f_pairs_am = f_am.shape[0]
 
     # Filter for lo-freq phase
     for i_f_ph in f_ph:
@@ -350,16 +368,15 @@ def _pre_filter_ph_am(data, sfreq, ixs, f_ph, f_am, n_cycles=3,
 
     # Output will be (n_chan, n_freqs, n_times). Operates in place.
     data_ph = data[ix_ph, :]
-    out_ph = _filter_and_hilbert(data_ph, sfreq, f_ph, n_cycles)
+    out_ph = _filter_and_hilbert(data_ph, sfreq, f_ph, n_cycles_ph)
     out_ph = np.angle(out_ph)
 
     data_am = data[ix_am, :]
-    out_am = _filter_and_hilbert(data_am, sfreq, f_am, n_cycles)
+    out_am = _filter_and_hilbert(data_am, sfreq, f_am, n_cycles_am)
     out_am = np.abs(out_am)
     if hi_phase is True:
         # We assume f_ph has len(1), multiple freqs not supported w/ plv
-        f_ph_am = f_ph[:1, :]
-        out_am = _filter_and_hilbert(out_am, sfreq, f_ph, n_cycles,
+        out_am = _filter_and_hilbert(out_am, sfreq, f_ph, n_cycles_ph,
                                      inplace=True)
         out_am = np.angle(out_am)
 
@@ -414,9 +431,9 @@ def _filter_and_hilbert(data, sfreq, frequencies, n_cycles, inplace=False):
         out = np.zeros([n_channels, n_freqs, n_times])
     # Filtering in place
     for ii in range(n_channels):
-        for jj in range(n_freqs):
+        for jj, n_cyc in zip(range(n_freqs), n_cycles):
             out[ii, jj] = _band_pass_pac(data[ii, 0], frequencies[jj], sfreq,
-                                         n_cycles=n_cycles)
+                                         n_cycles=n_cyc)
     n_hil = int(2 ** np.ceil(np.log2(n_times)))
     out = hilbert(out, N=n_hil)[..., :n_times]
     return out
