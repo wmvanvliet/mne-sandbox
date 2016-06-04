@@ -37,7 +37,7 @@ evoked = epochs.average()
 dss_mat, dss_data = dss(epochs, data_thresh=1e-9, bias_thresh=1e-9)
 
 evoked_data_clean = np.dot(dss_mat, evoked.data)
-evoked_data_clean[4:] = 0.
+evoked_data_clean[4:] = 0.  # select 4 components
 evoked_data_clean = np.dot(np.linalg.pinv(dss_mat), evoked_data_clean)
 
 # plot
@@ -45,7 +45,7 @@ fig, axs = plt.subplots(3, 1, figsize=(7, 10), sharex=True)
 plotdata = [evoked.data.T, evoked_data_clean.T, dss_data[:, 0].T]
 linewidths = (1, 1, 0.6)
 titles = ('evoked data (EEG only)',
-          'evoked data (clean)',
+          'evoked data after DSS (EEG only)',
           'first DSS component from each epoch (EEG only)')
 for ax, dat, lw, ti in zip(axs, plotdata, linewidths, titles):
     ax.xaxis.set_ticks_position('bottom')
