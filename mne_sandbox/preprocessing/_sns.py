@@ -35,13 +35,6 @@ class SensorNoiseSuppression(object):
     verbose : bool, str, int, or None
         If not None, override default verbose level (see mne.verbose).
 
-    Returns
-    -------
-    raw : instance of Raw
-        The cleaned raw data.
-    operator : ndarray, shape (n_meg_ch, n_meg_ch)
-        The spatial operator that was applied to the MEG channels.
-
     References
     ----------
     .. [1] De Cheveigné A, Simon JZ. Sensor noise suppression. Journal of
