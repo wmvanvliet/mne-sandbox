@@ -23,11 +23,11 @@ def test_sns():
     data = np.random.RandomState(0).randn(102, 5000)
     info = create_info(len(data), 1000., 'mag')
     raw = io.RawArray(data, info)
-    assert_raises(TypeError, SensorNoiseSuppression, 'foo', 10)
-    assert_raises(ValueError, SensorNoiseSuppression, raw, 'foo')
-    assert_raises(ValueError, SensorNoiseSuppression, raw, -1)
+    assert_raises(ValueError, SensorNoiseSuppression, 'foo')
+    assert_raises(TypeError, SensorNoiseSuppression(10).fit, 'foo')
+    assert_raises(ValueError, SensorNoiseSuppression, -1)
     raw.info['bads'] = [raw.ch_names[1]]
-    assert_raises(ValueError, SensorNoiseSuppression, raw, 101)
+    assert_raises(ValueError, SensorNoiseSuppression(101).fit, raw)
     for n_neighbors, bounds in ((2, (17, 20)),
                                 (5, (11, 15),),
                                 (10, (9, 12)),
@@ -35,7 +35,8 @@ def test_sns():
                                 (50, (5, 9)),
                                 (100, (5, 8)),
                                 ):
-        sns = SensorNoiseSuppression(raw, n_neighbors=n_neighbors)
+        sns = SensorNoiseSuppression(n_neighbors)
+        sns.fit(raw)
         raw_sns = sns.apply(raw.copy())
         operator = sns.operator
         assert_allclose(raw[1][0], raw_sns[1][0])  # bad channel not modified
@@ -54,12 +55,14 @@ def test_sns():
     assert_raises(TypeError, sns.apply, 'foo')
     sub_raw = raw.copy().pick_channels(raw.ch_names[:-1])
     assert_raises(RuntimeError, sns.apply, sub_raw)  # not all orig chs
-    sub_sns = SensorNoiseSuppression(sub_raw, 8)
+    sub_sns = SensorNoiseSuppression(8)
+    sub_sns.fit(sub_raw)
     assert_raises(RuntimeError, sub_sns.apply, raw)  # not all new chs
     # sample data
     raw = io.read_raw_fif(raw_fname)
     n_neighbors = 8
-    sns = SensorNoiseSuppression(raw, n_neighbors=n_neighbors)
+    sns = SensorNoiseSuppression(n_neighbors=n_neighbors)
+    sns.fit(raw)
     raw_sns = sns.apply(raw.copy().load_data())
     operator = sns.operator
     # bad channels not modified

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Sensor noise suppression"""
 
 import numpy as np
 
@@ -20,21 +21,16 @@ class SensorNoiseSuppression(object):
 
     Parameters
     ----------
-    raw : Instance of Raw
-        The raw data to process.
     n_neighbors : int
         Number of neighbors (based on correlation) to include in the
         projection.
     reject : dict | str | None
         Rejection parameters based on peak-to-peak amplitude.
-        Valid keys are 'grad' | 'mag' | 'eeg' | 'eog' | 'ecg'.
-        If reject is None then no rejection is done.
+        See :class:`mne.Epochs` for details.
         This is only used during the covariance-fitting phase.
     flat : dict | None
         Rejection parameters based on flatness of signal.
-        Valid keys are 'grad' | 'mag' | 'eeg' | 'eog' | 'ecg', and values
-        are floats that set the minimum acceptable peak-to-peak amplitude.
-        If flat is None then no rejection is done.
+        See :class:`mne.Epochs` for details.
         This is only used during the covariance-fitting phase.
     verbose : bool, str, int, or None
         If not None, override default verbose level (see mne.verbose).
@@ -51,19 +47,29 @@ class SensorNoiseSuppression(object):
     .. [1] De Cheveigné A, Simon JZ. Sensor noise suppression. Journal of
            Neuroscience Methods 168: 195–202, 2008.
     """
+    def __init__(self, n_neighbors, reject=None, flat=None):
+        self._n_neighbors = int(n_neighbors)
+        if self._n_neighbors < 1:
+            raise ValueError('n_neighbors must be positive')
+        self._reject = reject
+        self._flat = flat
 
     @verbose
-    def __init__(self, raw, n_neighbors, reject=None, flat=None, verbose=None):
+    def fit(self, raw, verbose=None):
+        """Fit the SNS operator
+
+        Parameters
+        ----------
+        raw : Instance of Raw
+            The raw data to fit.
+        """
         logger.info('Processing data with sensor noise suppression algorithm')
         logger.info('    Loading raw data')
         if not isinstance(raw, _BaseRaw):
             raise TypeError('raw must be an instance of Raw, got %s'
                             % type(raw))
-        n_neighbors = int(n_neighbors)
-        if n_neighbors < 1:
-            raise ValueError('n_neighbors must be positive')
         good_picks = _pick_data_channels(raw.info, exclude='bads')
-        if n_neighbors > len(good_picks) - 1:
+        if self._n_neighbors > len(good_picks) - 1:
             raise ValueError('n_neighbors must be at most len(good_picks) '
                              '- 1 (%s)' % (len(good_picks) - 1,))
         logger.info('    Loading data')
@@ -76,7 +82,7 @@ class SensorNoiseSuppression(object):
                     % len(good_picks))
         data_cov = np.eye(len(picks))
         good_cov = compute_raw_covariance(
-            raw, picks=good_picks, reject=reject, flat=flat,
+            raw, picks=good_picks, reject=self._reject, flat=self._flat,
             verbose=False)['data']
         # re-index this
         good_picks = np.searchsorted(picks, good_picks)
@@ -98,7 +104,8 @@ class SensorNoiseSuppression(object):
             if ii in bad_picks:
                 operator[ii, ii] = 1.
                 continue
-            idx = np.argsort(data_corrs[ii])[::-1][:n_neighbors + 1].tolist()
+            idx = np.argsort(data_corrs[ii])[::-1][:self._n_neighbors + 1]
+            idx = idx.tolist()
             idx.pop(idx.index(ii))  # should be in there
             # XXX Eventually we might want to actually threshold here (with
             # rank-deficient data it could matter)
@@ -106,8 +113,8 @@ class SensorNoiseSuppression(object):
             eigvec *= 1. / np.sqrt(eigval)
             del eigval
             # augment with given channel
-            eigvec = np.vstack(([[1] + [0] * n_neighbors],
-                               np.hstack((np.zeros((n_neighbors, 1)),
+            eigvec = np.vstack(([[1] + [0] * self._n_neighbors],
+                               np.hstack((np.zeros((self._n_neighbors, 1)),
                                           eigvec))))
             idx = np.concatenate(([ii], idx))
             corr = np.dot(np.dot(eigvec.T, data_cov[np.ix_(idx, idx)]), eigvec)
@@ -134,12 +141,12 @@ class SensorNoiseSuppression(object):
         Returns
         -------
         inst : instance of Raw
-            The input instance.
+            The input instance with cleaned data (operates inplace).
         """
         if isinstance(inst, _BaseRaw):
             if not inst.preload:
                 raise RuntimeError('raw data must be loaded, use '
-                                   'raw.load_data()')
+                                   'raw.load_data() or preload=True')
             offsets = np.concatenate([np.arange(0, len(inst.times), 10000),
                                       [len(inst.times)]])
             info = inst.info
