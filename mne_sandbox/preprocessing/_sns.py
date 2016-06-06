@@ -17,7 +17,7 @@ class SensorNoiseSuppression(object):
     This algorithm (from [1]_) will replace the data from each channel by
     its regression on the subspace formed by the other channels.
 
-    .. note:: Bad channels are not modified or reset by this function.
+    .. note:: Bad channels are not modified or reset by this class.
 
     Parameters
     ----------
@@ -47,12 +47,14 @@ class SensorNoiseSuppression(object):
     .. [1] De Cheveigné A, Simon JZ. Sensor noise suppression. Journal of
            Neuroscience Methods 168: 195–202, 2008.
     """
-    def __init__(self, n_neighbors, reject=None, flat=None):
+    @verbose
+    def __init__(self, n_neighbors, reject=None, flat=None, verbose=None):
         self._n_neighbors = int(n_neighbors)
         if self._n_neighbors < 1:
             raise ValueError('n_neighbors must be positive')
         self._reject = reject
         self._flat = flat
+        self.verbose = verbose
 
     @verbose
     def fit(self, raw, verbose=None):
@@ -62,6 +64,8 @@ class SensorNoiseSuppression(object):
         ----------
         raw : Instance of Raw
             The raw data to fit.
+        verbose : bool, str, int, or None
+            If not None, override default verbose level (see mne.verbose).
         """
         logger.info('Processing data with sensor noise suppression algorithm')
         logger.info('    Loading raw data')
