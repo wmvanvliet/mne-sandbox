@@ -102,16 +102,18 @@ class SensorNoiseSuppression(object):
             idx.pop(idx.index(ii))  # should be in there
             # XXX Eventually we might want to actually threshold here (with
             # rank-deficient data it could matter)
-            s, v = _pca(data_cov[np.ix_(idx, idx)], thresh=None)
-            v *= 1. / np.sqrt(s)
+            eigval, eigvec = _pca(data_cov[np.ix_(idx, idx)], thresh=None)
+            eigvec *= 1. / np.sqrt(eigval)
+            del eigval
             # augment with given channel
-            v = np.vstack(([[1] + [0] * n_neighbors],
-                           np.hstack((np.zeros((n_neighbors, 1)), v))))
+            eigvec = np.vstack(([[1] + [0] * n_neighbors],
+                               np.hstack((np.zeros((n_neighbors, 1)),
+                                          eigvec))))
             idx = np.concatenate(([ii], idx))
-            corr = np.dot(np.dot(v.T, data_cov[np.ix_(idx, idx)]), v)
+            corr = np.dot(np.dot(eigvec.T, data_cov[np.ix_(idx, idx)]), eigvec)
             # The channel is projected on this basis and replaced by its
             # projection
-            operator[ii, idx[1:]] = np.dot(corr[0, 1:], v[1:, 1:].T)
+            operator[ii, idx[1:]] = np.dot(corr[0, 1:], eigvec[1:, 1:].T)
         logger.info('Done')
         self._operator = operator
         self._used_chs = [raw.ch_names[pick] for pick in picks]
