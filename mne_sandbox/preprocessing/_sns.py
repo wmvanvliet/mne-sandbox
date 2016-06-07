@@ -148,9 +148,9 @@ class SensorNoiseSuppression(object):
                                       [len(inst.times)]])
             info = inst.info
             picks = pick_channels(info['ch_names'], self._used_chs)
-            data_picks = [info['ch_names'][pick]
-                          for pick in _pick_data_channels(info, exclude=())]
-            missing = set(data_picks) - set(self._used_chs)
+            data_chs = [info['ch_names'][pick]
+                        for pick in _pick_data_channels(info, exclude=())]
+            missing = set(data_chs) - set(self._used_chs)
             if len(missing) > 0:
                 raise RuntimeError('Not all data channels of inst were used '
                                    'to construct the operator: %s'
