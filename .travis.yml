@@ -47,7 +47,7 @@ install:
     - conda install --yes --quiet $ENSURE_PACKAGES nose coverage
     # We have to replicate e.g. numpy$NUMPY to ensure the recommended (higher) versions
     # are not automatically installed below with multiple "conda install" calls!
-    - curl http://lester.ilabs.uw.edu/files/minimal_cmds.tar.gz | tar xz;
+    - curl https://staff.washington.edu/larsoner/minimal_cmds.tar.gz | tar xz;
     - export MNE_ROOT="${PWD}/minimal_cmds";
     - export NEUROMAG2FT_ROOT="${PWD}/minimal_cmds/bin";
     - source ${MNE_ROOT}/bin/mne_setup_sh;
