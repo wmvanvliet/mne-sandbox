@@ -59,6 +59,11 @@ class SensorNoiseSuppression(object):
             The raw data to fit.
         verbose : bool, str, int, or None
             If not None, override default verbose level (see mne.verbose).
+
+        Returns
+        -------
+        sns : Instance of SensorNoiseSuppression
+            The modified instance.
         """
         logger.info('Processing data with sensor noise suppression algorithm')
         logger.info('    Loading raw data')
@@ -121,10 +126,17 @@ class SensorNoiseSuppression(object):
         logger.info('Done')
         self._operator = operator
         self._used_chs = [raw.ch_names[pick] for pick in picks]
+        return self
 
     @property
     def operator(self):
-        """The operator matrix"""
+        """The operator matrix
+
+        Returns
+        -------
+        operator : ndarray, shape (n_meg_ch, n_meg_ch)
+            The spatial operator that was applied to the MEG channels.
+        """
         return self._operator.copy()
 
     def apply(self, inst):
