@@ -14,9 +14,6 @@ env:
     # Note that we don't run coverage on Py3k anyway because it slows our tests
     # by a factor of 2 (!), so we make this our "from install dir" run.
     #
-    # If we change the old-version run to be a different Python version
-    # from 2.6, then we need to update mne.utils.clean_warning_registry.
-    #
     # Run one test (3.5) with a non-default stim channel to make sure our
     # tests are explicit about channels.
     #
@@ -27,7 +24,6 @@ env:
     - PYTHON=2.7 TEST_LOCATION=src NUMPY="=1.9" SCIPY="=0.17"
     - PYTHON=2.7 TEST_LOCATION=install NUMPY="=1.9" SCIPY="=0.17"
     - PYTHON=3.5 TEST_LOCATION=src
-    - PYTHON=2.6 TEST_LOCATION=src NUMPY="=1.7" SCIPY="=0.11" MPL="=1.1" LIBPNG="=1.5" SKLEARN="=0.11" PANDAS="=0.8"
 
 # Setup anaconda
 before_install:
