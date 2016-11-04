@@ -1,5 +1,5 @@
 import numpy as np
-from mne.time_frequency import cwt_morlet
+from mne.time_frequency.tfr import _compute_tfr
 from mne.preprocessing import peak_finder
 from mne.utils import ProgressBar, logger
 from scipy.signal import hilbert
@@ -580,8 +580,8 @@ def _extract_phase_and_amp(data_ph, data_am, sfreq, freqs_phase,
     from sklearn.preprocessing import scale
 
     # Morlet transform to get complex representation
-    band_ph = cwt_morlet(data_ph, sfreq, freqs_phase)
-    band_amp = cwt_morlet(data_am, sfreq, freqs_amp)
+    band_ph = _compute_tfr([data_ph], freqs_phase, sfreq, method='morlet')[0]
+    band_amp = _compute_tfr([data_ph], freqs_amp, sfreq, method='morlet')[0]
 
     # Calculate the phase/amplitude of relevant signals across epochs
     band_ph_stacked = np.hstack(np.real(band_ph))
