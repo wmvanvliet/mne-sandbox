@@ -60,7 +60,8 @@ def dss(data, data_max_components=None, data_thresh=0,
     """
     if isinstance(data, (Epochs, EpochsArray)):
         data_cov = compute_covariance(data).data
-        bias_cov = np.cov(data.average().data)
+        bias_cov = np.cov(data.average().pick_types(eeg=True, ref_meg=False).
+                          data)
         if return_data:
             data = data.get_data()
     elif isinstance(data, np.ndarray):
@@ -75,7 +76,6 @@ def dss(data, data_max_components=None, data_thresh=0,
     dss_mat = _dss(data_cov, bias_cov, data_max_components, data_thresh,
                    bias_max_components, bias_thresh)
     if return_data:
-        n_trials, n_chans, n_times = data.shape
         # next line equiv. to: np.array([np.dot(dss_mat, ep) for ep in data])
         dss_data = np.einsum('ij,hjk->hik', dss_mat, data)
         return dss_mat, dss_data
