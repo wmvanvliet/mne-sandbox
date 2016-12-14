@@ -597,8 +597,8 @@ def _extract_phase_and_amp(data_ph, data_am, sfreq, freqs_phase,
 def _pull_data(inst, ix_ph, ix_amp, events=None, tmin=None, tmax=None):
     """Pull data from either Base or Epochs instances"""
     from mne.io import BaseRaw
-    from mne.epochs import _BaseEpochs
-    if isinstance(inst, _BaseEpochs):
+    from mne import BaseEpochs
+    if isinstance(inst, BaseEpochs):
         data_ph = inst.get_data()[:, ix_ph, :]
         data_am = inst.get_data()[:, ix_amp, :]
     elif isinstance(inst, BaseRaw):
