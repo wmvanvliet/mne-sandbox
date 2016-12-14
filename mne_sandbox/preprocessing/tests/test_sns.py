@@ -86,4 +86,5 @@ def test_sns():
     # degenerate conditions
     assert_raises(RuntimeError, sns.apply, raw)  # not preloaded
 
+
 run_tests_if_main()
