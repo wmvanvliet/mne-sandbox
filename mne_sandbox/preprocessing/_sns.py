@@ -5,7 +5,7 @@ import numpy as np
 
 from mne import compute_raw_covariance
 from mne.io.pick import _pick_data_channels, pick_channels
-from mne.io import _BaseRaw
+from mne.io import BaseRaw
 from mne.utils import logger, verbose
 
 from ._dss import _pca
@@ -67,7 +67,7 @@ class SensorNoiseSuppression(object):
         """
         logger.info('Processing data with sensor noise suppression algorithm')
         logger.info('    Loading raw data')
-        if not isinstance(raw, _BaseRaw):
+        if not isinstance(raw, BaseRaw):
             raise TypeError('raw must be an instance of Raw, got %s'
                             % type(raw))
         good_picks = _pick_data_channels(raw.info, exclude='bads')
@@ -152,7 +152,7 @@ class SensorNoiseSuppression(object):
         inst : instance of Raw
             The input instance with cleaned data (operates inplace).
         """
-        if isinstance(inst, _BaseRaw):
+        if isinstance(inst, BaseRaw):
             if not inst.preload:
                 raise RuntimeError('raw data must be loaded, use '
                                    'raw.load_data() or preload=True')

@@ -1,4 +1,6 @@
 import numpy as np
+from mne import BaseEpochs
+from mne.io import BaseRaw
 from mne.time_frequency.tfr import _compute_tfr
 from mne.preprocessing import peak_finder
 from mne.utils import ProgressBar, logger
@@ -98,8 +100,7 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
     [1] This function uses the PacPy module developed by the Voytek lab.
         https://github.com/voytekresearch/pacpy
     """
-    from mne.io.base import _BaseRaw
-    if not isinstance(inst, _BaseRaw):
+    if not isinstance(inst, BaseRaw):
         raise ValueError('Must supply Raw as input')
     sfreq = inst.info['sfreq']
     data = inst[:][0]
@@ -596,12 +597,10 @@ def _extract_phase_and_amp(data_ph, data_am, sfreq, freqs_phase,
 
 def _pull_data(inst, ix_ph, ix_amp, events=None, tmin=None, tmax=None):
     """Pull data from either Base or Epochs instances"""
-    from mne.io.base import _BaseRaw
-    from mne.epochs import _BaseEpochs
-    if isinstance(inst, _BaseEpochs):
+    if isinstance(inst, BaseEpochs):
         data_ph = inst.get_data()[:, ix_ph, :]
         data_am = inst.get_data()[:, ix_amp, :]
-    elif isinstance(inst, _BaseRaw):
+    elif isinstance(inst, BaseRaw):
         data = inst[[ix_ph, ix_amp], :][0].squeeze()
         data_ph, data_am = [i[np.newaxis, ...] for i in data]
     return data_ph, data_am
