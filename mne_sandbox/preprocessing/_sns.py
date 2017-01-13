@@ -91,7 +91,7 @@ class SensorNoiseSuppression(object):
         bad_picks = np.setdiff1d(np.arange(len(picks)), good_picks)
         data_cov[np.ix_(good_picks, good_picks)] = good_cov
         del good_picks
-        data_norm = np.diag(data_cov)
+        data_norm = np.diag(data_cov).copy()
         pos_mask = data_norm > 0
         data_norm[pos_mask] = 1. / data_norm
         data_norm[~pos_mask] = 0
