@@ -85,13 +85,16 @@ class SensorNoiseSuppression(object):
         data_cov = np.eye(len(picks))
         good_cov = compute_raw_covariance(
             raw, picks=good_picks, reject=self._reject, flat=self._flat,
-            verbose=False)['data']
+            verbose=False if verbose is None else verbose)['data']
         # re-index this
         good_picks = np.searchsorted(picks, good_picks)
         bad_picks = np.setdiff1d(np.arange(len(picks)), good_picks)
         data_cov[np.ix_(good_picks, good_picks)] = good_cov
         del good_picks
         data_norm = np.diag(data_cov)
+        pos_mask = data_norm > 0
+        data_norm[pos_mask] = 1. / data_norm
+        data_norm[~pos_mask] = 0
         data_corrs = data_cov * data_cov
         data_corrs /= data_norm
         data_corrs /= data_norm[:, np.newaxis]
@@ -112,7 +115,11 @@ class SensorNoiseSuppression(object):
             # XXX Eventually we might want to actually threshold here (with
             # rank-deficient data it could matter)
             eigval, eigvec = _pca(data_cov[np.ix_(idx, idx)], thresh=None)
-            eigvec *= 1. / np.sqrt(eigval)
+            # Some of the eigenvalues could be zero, don't let it blow up
+            norm = np.zeros(len(eigval))
+            use_mask = eigval > 0
+            norm[use_mask] = 1. / np.sqrt(eigval[use_mask])
+            eigvec *= norm
             del eigval
             # augment with given channel
             eigvec = np.vstack(([[1] + [0] * self._n_neighbors],
