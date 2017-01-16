@@ -7,6 +7,7 @@ from numpy.testing import assert_allclose, assert_raises, assert_equal
 from nose.tools import assert_true
 
 from mne import create_info, io, pick_types, pick_channels
+from mne.io import RawArray
 from mne.utils import run_tests_if_main
 from mne.datasets import testing
 
@@ -39,11 +40,11 @@ def test_sns():
         sns.fit(raw)
         raw_sns = sns.apply(raw.copy())
         operator = sns.operator
-        assert_allclose(raw[1][0], raw_sns[1][0])  # bad channel not modified
-        assert_allclose(operator[1], np.array([0] + [1] +
-                                              [0] * (len(data) - 2)))
+        # bad channels are modified but not used
+        assert_allclose(operator[:, 1], 0.)
+        assert_true(np.sum(np.abs(operator)) > 0)
         assert_equal(operator[0].astype(bool).sum(), n_neighbors)
-        assert_equal(operator[0, 0], 0.)
+        assert_allclose(np.diag(operator), 0.)
         picks = pick_types(raw.info)
         orig_power = np.linalg.norm(raw[picks][0])
         # Test the suppression factor
@@ -65,14 +66,16 @@ def test_sns():
     sns.fit(raw)
     raw_sns = sns.apply(raw.copy().load_data())
     operator = sns.operator
-    # bad channels not modified
+    # bad channels are modified
     assert_equal(len(raw.info['bads']), 2)
     for pick in pick_channels(raw.ch_names, raw.info['bads']):
         expected = np.zeros(operator.shape[0])
         sub_pick = sns._used_chs.index(raw.ch_names[pick])
         expected[sub_pick] = 1.
-        assert_allclose(operator[sub_pick], expected)
-        assert_allclose(raw[pick][0], raw_sns[pick][0])
+        assert_raises(AssertionError, assert_allclose, operator[sub_pick],
+                      expected)
+        assert_raises(AssertionError, assert_allclose, raw[pick][0],
+                      raw_sns[pick][0])
     assert_equal(operator[0].astype(bool).sum(), n_neighbors)
     assert_equal(operator[0, 0], 0.)
     picks = pick_types(raw.info)
@@ -85,6 +88,32 @@ def test_sns():
                 % (n_neighbors, bounds[0], factor, bounds[1]))
     # degenerate conditions
     assert_raises(RuntimeError, sns.apply, raw)  # not preloaded
+
+    # Test against NoiseTools
+    rng = np.random.RandomState(0)
+    n_channels = 9
+    x = rng.randn(n_channels, 10000)
+    # make some correlations
+    x = np.dot(rng.randn(n_channels, n_channels), x)
+    x -= x.mean(axis=-1, keepdims=True)
+    # savemat('test.mat', dict(x=x))  # --> run through nt_sns in MATLAB
+    nt_op = np.array([  # Obtained from NoiseTools 18-Nov-2016
+        [0, 0, -0.3528, 0, 0.6152, 0, 0, -0.3299, 0.1914],
+        [0, 0, 0, 0.0336, 0, 0, -0.4284, 0, 0],
+        [-0.2928, 0.2463, 0, 0, -0.0891, 0, 0, 0.2200, 0],
+        [0, 0.0191, 0, 0, -0.3756, -0.3253, 0.4047, -0.4608, 0],
+        [0.3184, 0, -0.0878, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0.5865, 0, -0.2137],
+        [0, -0.5190, 0, 0.5059, 0, 0.8271, 0, 0, -0.0771],
+        [-0.3953, 0, 0.3092, -0.5018, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, -0.2050, 0, 0, 0]]).T
+
+    raw = RawArray(x, create_info(n_channels, 1000.,
+                                  ['grad', 'grad', 'mag'] * 3))
+    sns = SensorNoiseSuppression(3)
+    sns.fit(raw)
+    # this isn't perfect, but it's close
+    np.testing.assert_allclose(sns.operator, nt_op, rtol=5e-2, atol=1e-3)
 
 
 run_tests_if_main()
