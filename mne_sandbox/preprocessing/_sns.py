@@ -2,8 +2,11 @@
 """Sensor noise suppression"""
 
 import numpy as np
+from scipy import linalg
 
-from mne import compute_raw_covariance
+from mne import compute_raw_covariance, pick_info
+from mne.cov import (_check_scalings_user, _picks_by_type, _apply_scaling_cov,
+                     _apply_scaling_array, _undo_scaling_array)
 from mne.io.pick import _pick_data_channels, pick_channels
 from mne.io import BaseRaw
 from mne.utils import logger, verbose
@@ -32,6 +35,10 @@ class SensorNoiseSuppression(object):
         Rejection parameters based on flatness of signal.
         See :class:`mne.Epochs` for details.
         This is only used during the covariance-fitting phase.
+    scalings : dict | None (default None)
+        Defaults to ``dict(mag=1e15, grad=1e13, eeg=1e6)``.
+        These defaults will scale data channels to the same unit
+        (which should be roughly unity).
     verbose : bool, str, int, or None
         If not None, override default verbose level (see mne.verbose).
 
@@ -41,12 +48,14 @@ class SensorNoiseSuppression(object):
            Neuroscience Methods 168: 195–202, 2008.
     """
     @verbose
-    def __init__(self, n_neighbors, reject=None, flat=None, verbose=None):
+    def __init__(self, n_neighbors, reject=None, flat=None, scalings=None,
+                 verbose=None):
         self._n_neighbors = int(n_neighbors)
         if self._n_neighbors < 1:
             raise ValueError('n_neighbors must be positive')
         self._reject = reject
         self._flat = flat
+        self._scalings = _check_scalings_user(scalings)
         self.verbose = verbose
 
     @verbose
@@ -64,6 +73,11 @@ class SensorNoiseSuppression(object):
         -------
         sns : Instance of SensorNoiseSuppression
             The modified instance.
+
+        Notes
+        -----
+        In the resulting operator, bad channels will be reconstructed by
+        using the good channels.
         """
         logger.info('Processing data with sensor noise suppression algorithm')
         logger.info('    Loading raw data')
@@ -75,54 +89,62 @@ class SensorNoiseSuppression(object):
             raise ValueError('n_neighbors must be at most len(good_picks) '
                              '- 1 (%s)' % (len(good_picks) - 1,))
         logger.info('    Loading data')
-        raw = raw.copy()
         picks = _pick_data_channels(raw.info, exclude=())
         # The following lines are equivalent to this, but require less mem use:
         # data_cov = np.cov(orig_data)
         # data_corrs = np.corrcoef(orig_data) ** 2
         logger.info('    Computing covariance for %s good channels'
                     % len(good_picks))
-        data_cov = np.eye(len(picks))
-        good_cov = compute_raw_covariance(
-            raw, picks=good_picks, reject=self._reject, flat=self._flat,
-            verbose=False)['data']
-        # re-index this
-        good_picks = np.searchsorted(picks, good_picks)
-        bad_picks = np.setdiff1d(np.arange(len(picks)), good_picks)
-        data_cov[np.ix_(good_picks, good_picks)] = good_cov
+        data_cov = compute_raw_covariance(
+            raw, picks=picks, reject=self._reject, flat=self._flat,
+            verbose=False if verbose is None else verbose)['data']
+        good_subpicks = np.searchsorted(picks, good_picks)
         del good_picks
-        data_norm = np.diag(data_cov)
+        # scale the norms so everything is close enough to unity for our checks
+        picks_list = _picks_by_type(pick_info(raw.info, picks), exclude=())
+        _apply_scaling_cov(data_cov, picks_list, self._scalings)
+        data_norm = np.diag(data_cov).copy()
+        eps = np.finfo(np.float32).eps
+        pos_mask = data_norm >= eps
+        data_norm[pos_mask] = 1. / data_norm[pos_mask]
+        data_norm[~pos_mask] = 0
+        # normalize
         data_corrs = data_cov * data_cov
-        data_corrs /= data_norm
-        data_corrs /= data_norm[:, np.newaxis]
+        data_corrs *= data_norm
+        data_corrs *= data_norm[:, np.newaxis]
         del data_norm
-        data_cov *= len(raw.times)
         operator = np.zeros((len(picks), len(picks)))
         logger.info('    Assembling spatial operator')
         for ii in range(len(picks)):
             # For each channel, the set of other signals is orthogonalized by
             # applying PCA to obtain an orthogonal basis of the subspace
             # spanned by the other channels.
-            if ii in bad_picks:
-                operator[ii, ii] = 1.
-                continue
-            idx = np.argsort(data_corrs[ii])[::-1][:self._n_neighbors + 1]
-            idx = idx.tolist()
-            idx.pop(idx.index(ii))  # should be in there
-            # XXX Eventually we might want to actually threshold here (with
-            # rank-deficient data it could matter)
+            idx = np.argsort(data_corrs[ii][good_subpicks])[::-1]
+            if ii in good_subpicks:
+                idx = good_subpicks[idx[:self._n_neighbors + 1]].tolist()
+                idx.pop(idx.index(ii))  # should be in there iff it is good
+            else:
+                idx = good_subpicks[idx[:self._n_neighbors]].tolist()
+            # We have already effectively thresholded by zeroing out components
             eigval, eigvec = _pca(data_cov[np.ix_(idx, idx)], thresh=None)
-            eigvec *= 1. / np.sqrt(eigval)
+            # Some of the eigenvalues could be zero, don't let it blow up
+            norm = np.zeros(len(eigval))
+            use_mask = eigval > eps
+            norm[use_mask] = 1. / np.sqrt(eigval[use_mask])
+            eigvec *= norm
             del eigval
             # augment with given channel
-            eigvec = np.vstack(([[1] + [0] * self._n_neighbors],
-                               np.hstack((np.zeros((self._n_neighbors, 1)),
-                                          eigvec))))
+            eigvec = linalg.block_diag([1.], eigvec)
             idx = np.concatenate(([ii], idx))
-            corr = np.dot(np.dot(eigvec.T, data_cov[np.ix_(idx, idx)]), eigvec)
             # The channel is projected on this basis and replaced by its
-            # projection
+            # projection (rotate and project)
+            corr = np.dot(np.dot(eigvec.T, data_cov[np.ix_(idx, idx)]), eigvec)
             operator[ii, idx[1:]] = np.dot(corr[0, 1:], eigvec[1:, 1:].T)
+            if operator[ii, ii] != 0:
+                raise RuntimeError
+        # scale our results back (the ratio of channel scales is what matters)
+        _apply_scaling_array(operator.T, picks_list, self._scalings)
+        _undo_scaling_array(operator, picks_list, self._scalings)
         logger.info('Done')
         self._operator = operator
         self._used_chs = [raw.ch_names[pick] for pick in picks]
