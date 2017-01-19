@@ -2,7 +2,6 @@
 """Sensor noise suppression"""
 
 import numpy as np
-from scipy import linalg
 
 from mne import compute_raw_covariance, pick_info
 from mne.cov import (_check_scalings_user, _picks_by_type, _apply_scaling_cov,
@@ -133,13 +132,16 @@ class SensorNoiseSuppression(object):
             norm[use_mask] = 1. / np.sqrt(eigval[use_mask])
             eigvec *= norm
             del eigval
-            # augment with given channel
-            eigvec = linalg.block_diag([1.], eigvec)
-            idx = np.concatenate(([ii], idx))
             # The channel is projected on this basis and replaced by its
-            # projection (rotate and project)
-            corr = np.dot(np.dot(eigvec.T, data_cov[np.ix_(idx, idx)]), eigvec)
-            operator[ii, idx[1:]] = np.dot(corr[0, 1:], eigvec[1:, 1:].T)
+            # projection
+            operator[ii, idx] = np.dot(eigvec,
+                                       np.dot(data_cov[ii][idx], eigvec))
+            # Equivalently (and less efficiently):
+            # eigvec = linalg.block_diag([1.], eigvec)
+            # idx = np.concatenate(([ii], idx))
+            # corr = np.dot(np.dot(eigvec.T, data_cov[np.ix_(idx, idx)]),
+            #               eigvec)
+            # operator[ii, idx[1:]] = np.dot(corr[0, 1:], eigvec[1:, 1:].T)
             if operator[ii, ii] != 0:
                 raise RuntimeError
         # scale our results back (the ratio of channel scales is what matters)
