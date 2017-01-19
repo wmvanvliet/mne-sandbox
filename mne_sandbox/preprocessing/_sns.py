@@ -2,7 +2,6 @@
 """Sensor noise suppression"""
 
 import numpy as np
-from scipy import linalg
 
 from mne import compute_raw_covariance, pick_info
 from mne.cov import (_check_scalings_user, _picks_by_type, _apply_scaling_cov,
