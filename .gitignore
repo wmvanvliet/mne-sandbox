@@ -19,3 +19,5 @@
 *.tmproj
 *.png
 .DS_Store
+build
+*.orig
